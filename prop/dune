@@ -24,7 +24,7 @@
   constraint_typing
   typecheck
   ;; Prover
-  z3decls
+  dtencoding
   z3aux
   constencoding
   litencoding

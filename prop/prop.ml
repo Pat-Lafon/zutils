@@ -4,3 +4,4 @@ module Z3decls = Z3decls
 module Prover = Prover
 module Propencoding = Propencoding
 module SimplProp = SimplProp
+module Dtencoding = Dtencoding

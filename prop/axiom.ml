@@ -45,8 +45,21 @@ let%test "pred_extension is one pass, in either rule order" =
     ZUtilsConfig.set { default with pred_extension_rules = rules };
     StrSet.to_list @@ pred_extension (StrSet.of_list l)
   in
-  let chained =
-    [ ([ "list_mem" ], [ "list_len" ]); ([ "hd" ], [ "list_mem" ]) ]
+  StrMap.to_key_list m
+
+let pred_extension (_, ps) =
+  let rules =
+    List.map
+      (fun (k, vs) -> (StrSet.singleton k, vs))
+      (Myconfig.get_pred_extension_rules ())
+  in
+  let ps =
+    List.fold_left
+      (fun ps (rname, new_preds) ->
+        let new_preds = if StrSet.subset rname ps then new_preds else [] in
+        let ps = StrSet.add_seq (List.to_seq new_preds) ps in
+        ps)
+      ps rules
   in
   ext chained [ "hd" ] = [ "hd"; "list_mem" ]
   && ext (List.rev chained) [ "hd" ] = [ "hd"; "list_mem" ]

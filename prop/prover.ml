@@ -13,7 +13,37 @@ type smt_result = Portfolio.smt_result =
 type valid_result = SmtValid | SmtInvalid | Unknown of string option
 type prover = { ax_sys : laxiom_system; ctx : context }
 
-let mk_prover () = { ctx = mk_context []; ax_sys = Axiom.emp }
+let layout_smt_result = function
+  | SmtSat model ->
+      ( _log "model" @@ fun _ ->
+        Printf.printf "model:\n%s\n" (layout_model model) );
+      "sat"
+  | SmtUnsat -> "unsat"
+  | Timeout -> "timeout"
+
+type prover = {
+  ax_sys : laxiom_system;
+  ctx : context;
+  solver : solver;
+  goal : goal;
+}
+
+let _mk_prover timeout_bound =
+  let ctx =
+    mk_context
+      [
+        ("model", "true");
+        ("proof", "false");
+        ("timeout", string_of_int timeout_bound);
+      ]
+  in
+  let () = Dtencoding.register_all_for_ctx ctx Z3aux.tp_to_sort in
+  let solver = mk_solver ctx None in
+  let goal = mk_goal ctx true false false in
+  let ax_sys = Axiom.emp in
+  { ctx; ax_sys; solver; goal }
+
+let mk_prover () = _mk_prover (get_prover_timeout_bound ())
 let _prover : prover option ref = ref None
 
 let get_prover () =
@@ -46,6 +76,17 @@ let set_z3_timeout (timeout : int option) =
         failwith (Printf.sprintf "z3 timeout must be positive, got %d" n))
     timeout;
   _timeout := timeout
+
+let query_counter = ref 0
+
+let set_z3_rlimit rlimit =
+  Z3.Params.update_param_value (get_ctx ()) "rlimit" (string_of_int rlimit)
+
+let set_z3_timeout (timeout : int option) =
+  match timeout with
+  | None -> ()
+  | Some t ->
+      Z3.Params.update_param_value (get_ctx ()) "timeout" (string_of_int t)
 
 let update_axioms axioms =
   let p = get_prover () in
@@ -124,36 +165,47 @@ let select_axioms prop =
   let { ax_sys; _ } = get_prover () in
   Axiom.find_axioms ax_sys prop
 
-let all_axioms () =
+let select_axioms (task, prop) =
   let { ax_sys; _ } = get_prover () in
-  Axiom.all_axioms ax_sys
+  Axiom.find_axioms ax_sys (task, prop)
 
-let report_unclosed loc query =
-  let fvs = fv_prop query in
-  _assert loc
-    (spf "the query has free variables %s"
-       (List.split_by_comma
-          (function { x; ty } -> spf "%s:%s" x (Nt.layout ty))
-          fvs))
-    (0 = List.length fvs)
-
-let check_sat loc prop =
+let check_sat ~axioms (_task, prop) =
   incr query_counter;
-  let () = report_unclosed loc prop in
-  let { ctx; ax_sys } = get_prover () in
-  let z3_axioms =
-    List.map (fun (_, p) -> Propencoding.to_z3 ctx p)
-    @@ Axiom.find_axioms ax_sys prop
-  in
+  let { goal; solver; ctx; _ } = get_prover () in
+  let z3_axioms = List.map (Propencoding.to_z3 ctx) axioms in
   let query = Propencoding.to_z3 ctx prop in
   let _ =
     ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>QUERY:@}\n%s\n" (Expr.to_string query)
   in
-  let body = serialize ctx (z3_axioms @ [ query ]) in
-  let entries = portfolio_entries body in
-  dump_queries entries;
-  let time_t, (res, winner) = Sugar.clock (fun () -> Portfolio.solve entries) in
+  Goal.reset goal;
+  Goal.add goal (z3_axioms @ [ query ]);
+  let _ =
+    _log_queries @@ fun _ ->
+    Pp.printf "@{<bold>Goal:@}\n%s\n" (Goal.to_string goal)
+  in
+  (* let goal = Goal.simplify goal None in *)
+  (* let _ = *)
+  (*   _log_queries @@ fun _ -> *)
+  (*   Pp.printf "@{<bold>Simplifid Goal:@}\n%s\n" (Goal.to_string goal) *)
+  (* in *)
+  Goal.add goal z3_axioms;
+  Solver.reset solver;
+  Solver.add solver (get_formulas goal);
+  (match Sys.getenv_opt "TOTEM_DUMP_SMT" with
+   | None -> ()
+   | Some _ ->
+       let idx = !query_counter in
+       let path =
+         Filename.concat (Filename.get_temp_dir_name ())
+           (Printf.sprintf "cobb_query_%i.smt2" idx)
+       in
+       let oc = open_out path in
+       output_string oc (Solver.to_string solver);
+       output_string oc "\n(check-sat)\n";
+       close_out oc;
+       Printf.eprintf "Dumped SMT query to %s\n" path);
+  let time_t, res = Sugar.clock (fun () -> handle_sat_result solver) in
   let () =
     ZUtilsLog.stat @@ fun _ ->
     Pp.printf
@@ -165,14 +217,25 @@ let check_sat loc prop =
   in
   res
 
-(* z3's [:reason-unknown] → which knob to raise to move the verdict. *)
-let coercion_hint = function
-  | Some r when String.starts_with ~prefix:"max. resource" r ->
-      "raise rlimit first, then debug the query"
-  | Some ("timeout" | "canceled") ->
-      "raise the prover timeout first, then debug the query"
-  | Some r -> Printf.sprintf "z3 reason-unknown: %s" r
-  | None -> "z3 gave no reason-unknown"
+let check_sat_bool ~axioms (task, prop) =
+  let res = check_sat ~axioms (task, prop) in
+  let () =
+    _log_queries @@ fun _ ->
+    Pp.printf "@{<bold>SAT(%s): @} %s\n" (layout_smt_result res)
+      (Front.layout_prop prop)
+  in
+  let res =
+    match res with
+    | SmtUnsat -> false
+    | SmtSat model ->
+        ( _log "model" @@ fun _ ->
+          Printf.printf "model:\n%s\n" (layout_model model) );
+        true
+    | Timeout ->
+        (_log_queries @@ fun _ -> Pp.printf "@{<bold>SMTTIMEOUT@}\n");
+        false
+  in
+  res
 
 let record_nondecisive ~reason ~coerced_to =
   ZUtilsLog.queries @@ fun () ->
@@ -186,20 +249,19 @@ let check_valid loc query =
   | SmtSat -> SmtInvalid
   | Unknown reason -> Unknown reason
 
-let check_sat_bool loc query ~coerce_to =
-  let coerce_desc = if coerce_to then "inhabited" else "uninhabited" in
-  match check_sat loc query with
-  | SmtSat -> true
-  | SmtUnsat -> false
-  | Unknown reason ->
-      record_nondecisive ~reason ~coerced_to:coerce_desc;
-      coerce_to
-
-let check_valid_bool loc query ~coerce_to =
-  let coerce_desc = if coerce_to then "valid" else "invalid" in
-  match check_valid loc query with
-  | SmtValid -> true
-  | SmtInvalid -> false
-  | Unknown reason ->
-      record_nondecisive ~reason ~coerced_to:coerce_desc;
-      coerce_to
+(** Unsat means true; otherwise means false *)
+let check_valid ~axioms (task, prop) =
+  let () = _store_input (task, prop) in
+  (* let () = *)
+  (*   Printf.printf "input:\n%s\n" *)
+  (*     (Sexplib.Sexp.to_string @@ sexp_of_prop Nt.sexp_of_nt (Not prop)) *)
+  (* in *)
+  match check_sat ~axioms (task, Not prop) with
+  | SmtUnsat -> true
+  | SmtSat model ->
+      ( _log "model" @@ fun _ ->
+        Printf.printf "model:\n%s\n" (layout_model model) );
+      false
+  | Timeout ->
+      (_log_queries @@ fun _ -> Pp.printf "@{<bold>SMTTIMEOUT@}\n");
+      false

@@ -58,17 +58,13 @@ let envs : (context * env) list ref = ref []
 
 let rec smt_tp_to_sort ctx t =
   match t with
+  (* | Smt_enum { enum_name; enum_elems } -> *)
+  (*     get_z3_enum_type ctx (enum_name, enum_elems) *)
   | Smt_Uninterp name -> (
-      let built =
-        Option.bind (List.assq_opt ctx !envs) (fun env ->
-            Hashtbl.find_opt env.datatypes name)
-      in
-      match built with
-      | Some sort -> sort
-      | None when Z3decls.is_registered name ->
-          _die_with [%here]
-            (spf "registered datatype %s has no sort built in this context" name)
+      match Dtencoding.z3_data_type_get name with
+      | Some dt -> dt.sort
       | None -> Sort.mk_uninterpreted_s ctx name)
+  (* | Smt_Uninterp _ -> Integer.mk_sort ctx *)
   | Smt_Unit -> Enumeration.mk_sort_s ctx z3_unit_name [ z3_tt_name ]
   | Smt_Int -> Integer.mk_sort ctx
   | Smt_Bool -> Boolean.mk_sort ctx

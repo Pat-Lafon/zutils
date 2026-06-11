@@ -35,7 +35,7 @@ let rec lit_to_expr expr =
       else mkvar x.x
 
 and typed_lit_to_expr expr =
-  if ZUtilsConfig.get_show_var_type_in_lit () then
+  if Myconfig.get_show_var_type_in_lit () then
     match expr.ty with
     | Nt.Ty_unknown -> lit_to_expr expr.x
     | _ ->
