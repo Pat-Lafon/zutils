@@ -67,7 +67,7 @@ and t_to_core_type_desc t =
       Ptyp_constr (Location.mknoloc id, List.map t_to_core_type args)
   | Ty_record { fds; alias } ->
       let alias = match alias with None -> "_record" | Some alias -> alias in
-      if Myconfig.get_show_record_type_feilds () then
+      if Myconfig.get_show_record_type_fields () then
         let name_type = "record_name"#:(Ty_constructor (alias, [])) in
         Ptyp_object
           (List.map labeled_t_to_feild (name_type :: fds), Asttypes.Closed)

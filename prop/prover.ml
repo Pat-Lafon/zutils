@@ -36,6 +36,7 @@ let _mk_prover timeout_bound =
         ("timeout", string_of_int timeout_bound);
       ]
   in
+  let () = Dtencoding.register_all_for_ctx ctx Z3aux.tp_to_sort in
   let solver = mk_solver ctx None in
   let goal = mk_goal ctx true false false in
   let ax_sys = Axiom.emp in
@@ -66,6 +67,17 @@ let get_prover () =
 
 let get_ctx () = (get_prover ()).ctx
 
+let query_counter = ref 0
+
+let set_z3_rlimit rlimit =
+  Z3.Params.update_param_value (get_ctx ()) "rlimit" (string_of_int rlimit)
+
+let set_z3_timeout (timeout : int option) =
+  match timeout with
+  | None -> ()
+  | Some t ->
+      Z3.Params.update_param_value (get_ctx ()) "timeout" (string_of_int t)
+
 let update_axioms axioms =
   let ctx = get_ctx () in
   let axioms =
@@ -95,18 +107,21 @@ let handle_sat_result solver =
       | None -> failwith "never happen"
       | Some m -> SmtSat m)
 
-let check_sat (task, prop) =
-  let { goal; solver; ax_sys; ctx } = get_prover () in
-  let axioms =
-    List.map (Propencoding.to_z3 ctx) @@ Axiom.find_axioms ax_sys (task, prop)
-  in
+let select_axioms (task, prop) =
+  let { ax_sys; _ } = get_prover () in
+  Axiom.find_axioms ax_sys (task, prop)
+
+let check_sat ~axioms (_task, prop) =
+  incr query_counter;
+  let { goal; solver; ctx; _ } = get_prover () in
+  let z3_axioms = List.map (Propencoding.to_z3 ctx) axioms in
   let query = Propencoding.to_z3 ctx prop in
   let _ =
     _log_queries @@ fun _ ->
     Pp.printf "@{<bold>QUERY:@}\n%s\n" (Expr.to_string query)
   in
   Goal.reset goal;
-  Goal.add goal (axioms @ [ query ]);
+  Goal.add goal (z3_axioms @ [ query ]);
   let _ =
     _log_queries @@ fun _ ->
     Pp.printf "@{<bold>Goal:@}\n%s\n" (Goal.to_string goal)
@@ -116,17 +131,30 @@ let check_sat (task, prop) =
   (*   _log_queries @@ fun _ -> *)
   (*   Pp.printf "@{<bold>Simplifid Goal:@}\n%s\n" (Goal.to_string goal) *)
   (* in *)
-  Goal.add goal axioms;
+  Goal.add goal z3_axioms;
   Solver.reset solver;
   Solver.add solver (get_formulas goal);
+  (match Sys.getenv_opt "TOTEM_DUMP_SMT" with
+   | None -> ()
+   | Some _ ->
+       let idx = !query_counter in
+       let path =
+         Filename.concat (Filename.get_temp_dir_name ())
+           (Printf.sprintf "cobb_query_%i.smt2" idx)
+       in
+       let oc = open_out path in
+       output_string oc (Solver.to_string solver);
+       output_string oc "\n(check-sat)\n";
+       close_out oc;
+       Printf.eprintf "Dumped SMT query to %s\n" path);
   let time_t, res = Sugar.clock (fun () -> handle_sat_result solver) in
   let () =
     _log_stat @@ fun _ -> Pp.printf "@{<bold>Z3 Solving time: %.2f@}\n" time_t
   in
   res
 
-let check_sat_bool (task, prop) =
-  let res = check_sat (task, prop) in
+let check_sat_bool ~axioms (task, prop) =
+  let res = check_sat ~axioms (task, prop) in
   let () =
     _log_queries @@ fun _ ->
     Pp.printf "@{<bold>SAT(%s): @} %s\n" (layout_smt_result res)
@@ -156,13 +184,13 @@ let _store_input (task, prop) =
   Sexplib.Sexp.save path (sexp_of_prop Nt.sexp_of_nt (Not prop))
 
 (** Unsat means true; otherwise means false *)
-let check_valid (task, prop) =
+let check_valid ~axioms (task, prop) =
   let () = _store_input (task, prop) in
   (* let () = *)
   (*   Printf.printf "input:\n%s\n" *)
   (*     (Sexplib.Sexp.to_string @@ sexp_of_prop Nt.sexp_of_nt (Not prop)) *)
   (* in *)
-  match check_sat (task, Not prop) with
+  match check_sat ~axioms (task, Not prop) with
   | SmtUnsat -> true
   | SmtSat model ->
       ( _log "model" @@ fun _ ->

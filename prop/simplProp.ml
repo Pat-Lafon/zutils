@@ -211,11 +211,24 @@ let simpl_query_by_eq (query : Nt.t prop) =
         let body = aux body in
         match find_eq_lit_in_prop qv.x body with
         | None -> Exists { body; qv }
-        | Some lit ->
-            let body = subst_prop_instance qv.x lit.x body in
-            let body = simpl_eq_in_prop body in
-            let body = simpl_no_used_quantifiers body in
-            body)
+        | Some lit -> (
+            (* Refuse to inline when the defining equation is a datatype
+               accessor application (e.g. `qv == left v`). The Lean dump
+               path needs the bridging existential so Lean's `Some`
+               coercion reconciles its Option-wrapped accessor types
+               with Cobb's raw view in `normal_typing.ml`. Z3 still sees
+               the equation as a constraint and inlines via unification. *)
+            let is_accessor_app =
+              match lit.x with
+              | AAppOp (op, _) -> Dtencoding.is_dt_accessor op.x
+              | _ -> false
+            in
+            if is_accessor_app then Exists { body; qv }
+            else
+              let body = subst_prop_instance qv.x lit.x body in
+              let body = simpl_eq_in_prop body in
+              let body = simpl_no_used_quantifiers body in
+              body))
     | Forall { body; qv } -> Forall { body = aux body; qv }
     | And l -> smart_and (List.map aux l)
     | Or l -> smart_or (List.map aux l)

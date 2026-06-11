@@ -151,7 +151,7 @@ let prop_of_expr expr =
 
 let layout_prop__raw x = string_of_expression @@ prop_to_expr x
 let layout_prop expr = layout_prop_ psetting expr
-let layout_propRaw expr = layout_prop_ rawsetting expr
+let layout_prop_ocaml expr = layout_prop_ rawsetting expr
 let layout_prop_to_coq expr = layout_prop_ coqsetting expr
 let layout = layout_prop
 let of_expr = prop_of_expr

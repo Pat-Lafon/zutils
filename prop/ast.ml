@@ -84,7 +84,7 @@ let eq_prop p1 p2 = equal_prop (fun _ _ -> true) p1 p2
 let uAVar x = AVar (Nt.untyped x)
 
 let sort_lit_record args =
-  if Myconfig.get_bool_option "if_sort_record" then
+  if Myconfig.get_if_sort_record () then
     List.sort (fun a b -> String.compare (fst a) (fst b)) args
   else args
 

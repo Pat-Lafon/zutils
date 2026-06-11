@@ -30,9 +30,12 @@ let find_axioms_by_preds asys query_preds =
   in
   StrMap.to_key_list m
 
-let rules = [ (StrSet.of_list [ "hd" ], [ "list_mem" ]) ]
-
 let pred_extension (_, ps) =
+  let rules =
+    List.map
+      (fun (k, vs) -> (StrSet.singleton k, vs))
+      (Myconfig.get_pred_extension_rules ())
+  in
   let ps =
     List.fold_left
       (fun ps (rname, new_preds) ->

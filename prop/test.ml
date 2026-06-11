@@ -160,7 +160,8 @@ let eval_ex_prim_in_prop (task_name, sprop) =
     | qv :: evars when Nt.equal_nt qv.ty Nt.int_ty -> (
         let body = snf_quantified_var_by_name qv.x sprop in
         let () = Printf.printf "Eval SNF Prop: \n%s\n" (Front.layout body) in
-        let res = check_sat (Some task_name, body) in
+        let axioms = select_axioms (Some task_name, body) in
+        let res = check_sat ~axioms (Some task_name, body) in
         let () = Pp.printf "@{<bold>SAT(%s): @}\n" (layout_smt_result res) in
         match res with
         | SmtSat model -> (
@@ -225,7 +226,8 @@ let%test "query_from_file" =
   let () = Printf.printf "Simplied Prop:\n%s\n" @@ Front.layout sprop in
   let sprop = to_nnf @@ SimplProp.instantiate_quantified_bool sprop in
   let () = Printf.printf "Simplied Prop:\n%s\n" @@ Front.layout sprop in
-  let res = check_sat (Some task_name, sprop) in
+  let axioms = select_axioms (Some task_name, sprop) in
+  let res = check_sat ~axioms (Some task_name, sprop) in
   let () = Pp.printf "@{<bold>SAT(%s): @}\n" (layout_smt_result res) in
   let () =
     match res with

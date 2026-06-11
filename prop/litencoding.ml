@@ -82,7 +82,17 @@ let rec typed_lit_to_z3 ctx lit =
       | "char_to_int", [ a ] -> Seq.mk_char_to_int ctx a
       | "char_le", [ a; b ] -> Seq.mk_char_le ctx a b
       | opname, args ->
-          let opname = spf "%s!%s" opname (Nt.layout op.ty) in
-          let argsty, retty = Nt.destruct_arr_tp op.ty in
-          let func = z3func ctx opname argsty retty in
+          let dt_key =
+            match Nt.destruct_arr_tp op.ty with
+            | t :: _, _ -> Nt.layout t
+            | [], _ -> Nt.layout op.ty (* nullary ctor: keyed by return type *)
+          in
+          let func =
+            match Dtencoding.z3_data_type_func_lookup dt_key opname with
+            | Some f -> f
+            | None ->
+                let opname = spf "%s!%s" opname (Nt.layout op.ty) in
+                let argsty, retty = Nt.destruct_arr_tp op.ty in
+                z3func ctx opname argsty retty
+          in
           Z3.FuncDecl.apply func args)

@@ -34,7 +34,19 @@ let get_show_var_type_in_prop () = get_bool_option show_var_type_in_prop
 let get_instantiate_poly_type_var_in_smt () =
   get_bool_option instantiate_poly_type_var_in_smt
 
-let get_show_record_type_feilds () = get_bool_option show_record_type_feilds
+let get_show_record_type_fields () = get_bool_option show_record_type_fields
+let get_if_sort_record () = get_bool_option if_sort_record
+let get_show_var_type_in_term () = get_bool_option show_var_type_in_term
+let get_show_var_type_in_lit () = get_bool_option show_var_type_in_lit
+
+let get_show_type_infer_pre_judgement () =
+  get_bool_option show_type_infer_pre_judgement
+
+let get_show_type_infer_constant_judgement () =
+  get_bool_option show_type_infer_constant_judgement
+
+let get_show_type_infer_variable_judgement () =
+  get_bool_option show_type_infer_variable_judgement
 
 let _log kw (f : unit -> unit) =
   match get_log_tags () with
@@ -51,5 +63,21 @@ let _log_stat = _log "stat"
 let _log_info = _log "info"
 let _log_debug = _log "debug"
 let get_prim_path () = (get_meta ()).prim_path
+let get_uninterops () = (get_meta ()).abd_templates
+let get_name_to_avoid () = (get_meta ()).name_to_avoid
+let get_pred_extension_rules () = (get_meta ()).pred_extension_rules
+
+let get_lean_preamble_path () =
+  match (get_meta ()).prim_path.lean_preamble with
+  | Some p -> p
+  | None ->
+      failwith
+        "meta-config is missing required key 'prim_path.lean_preamble' \
+         (needed to dump Lean subtyping queries). Add it to your \
+         meta-config.json, pointing at one of \
+         data/predefined/lean_preamble_ilist.lean, \
+         data/predefined/lean_preamble_rbtree.lean, or \
+         data/predefined/lean_preamble_itree.lean (path is resolved \
+         relative to the cobb invocation's cwd)."
 let global_counter = ref 0
 let global_counterpp () = global_counter := !global_counter + 1
