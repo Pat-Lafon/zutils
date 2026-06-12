@@ -134,13 +134,13 @@ let check_sat ~axioms (_task, prop) =
   Goal.add goal z3_axioms;
   Solver.reset solver;
   Solver.add solver (get_formulas goal);
-  (match Sys.getenv_opt "TOTEM_DUMP_SMT" with
+  (match Sys.getenv_opt "ZUTILS_DUMP_SMT" with
    | None -> ()
    | Some _ ->
        let idx = !query_counter in
        let path =
          Filename.concat (Filename.get_temp_dir_name ())
-           (Printf.sprintf "cobb_query_%i.smt2" idx)
+           (Printf.sprintf "zutils_query_%i.smt2" idx)
        in
        let oc = open_out path in
        output_string oc (Solver.to_string solver);
