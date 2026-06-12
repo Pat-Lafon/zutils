@@ -138,7 +138,7 @@ let type_unification m (cs : (t * t) list) =
               List.fold_left
                 (fun res x ->
                   match Hashtbl.find_opt tab x.x with
-                  | None -> _die_with [%here] (spf "cannot find feild %s" x.x)
+                  | None -> _die_with [%here] (spf "cannot find field %s" x.x)
                   | Some t' -> (t', x.ty) :: res)
                 cs l2
             in

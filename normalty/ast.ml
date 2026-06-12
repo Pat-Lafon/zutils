@@ -90,13 +90,5 @@ let get_nth_ty loc ty n =
       | Some ty -> ty)
   | _ -> _die_with loc "not a tuple type"
 
-(* let get_record_name = function *)
-(*   | Ty_record { record_name; _ } -> record_name *)
-(*   | _ -> _die [%here] *)
-
-(* let get_record_feilds = function *)
-(*   | Ty_enum { enum_elems; _ } -> enum_elems *)
-(*   | _ -> _die [%here] *)
-
 let get_arr_lhs = function Ty_arrow (t1, _) -> t1 | _ -> _die [%here]
 let get_arr_rhs = function Ty_arrow (_, t2) -> t2 | _ -> _die [%here]

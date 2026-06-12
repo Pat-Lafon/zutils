@@ -94,13 +94,13 @@ let as_lit_record loc = function
   | ARecord args -> sort_lit_record args
   | _ -> _die loc
 
-let get_lit_feild loc t name =
+let get_lit_field loc t name =
   let args = as_lit_record loc t in
   match List.find_opt (fun y -> String.equal name (fst y)) args with
   | None -> _die [%here]
   | Some n -> snd n
 
-let get_lit_feild_idx loc t name =
+let get_lit_field_idx loc t name =
   let args = as_lit_record loc t in
   match List.find_index (fun y -> String.equal name (fst y)) args with
   | None -> _die [%here]
