@@ -2,7 +2,7 @@ open Z3
 open Z3aux
 open Syntax
 open Sugar
-open Myconfig
+open ZUtilsConfig
 open Zdatatype
 
 let unique_quantifiers prop =
@@ -37,7 +37,8 @@ let unique_quantifiers prop =
   in
   match aux prop with None -> false | Some _ -> true
 
-let to_z3 ctx prop =
+let to_z3 (env : Dtencoding.z3_env) prop =
+  let ctx = env.ctx in
   let rec aux prop =
     match prop with
     | Implies (p1, p2) ->
@@ -58,20 +59,18 @@ let to_z3 ctx prop =
     | Or ps -> Boolean.mk_or ctx (List.map aux ps)
     | Iff (p1, p2) -> Boolean.mk_iff ctx (aux p1) (aux p2)
     | Forall { qv; body } ->
-        make_forall ctx [ tpedvar_to_z3 ctx (qv.ty, qv.x) ] (aux body)
+        make_forall ctx [ tpedvar_to_z3 env (qv.ty, qv.x) ] (aux body)
     | Exists { qv; body } ->
-        make_exists ctx [ tpedvar_to_z3 ctx (qv.ty, qv.x) ] (aux body)
-    | Lit lit -> Litencoding.typed_lit_to_z3 ctx lit
+        make_exists ctx [ tpedvar_to_z3 env (qv.ty, qv.x) ] (aux body)
+    | Lit lit -> Litencoding.typed_lit_to_z3 env lit
   in
-  let () = _assert [%here] "sanity check" (unique_quantifiers prop) in
+  let () =
+    if List.mem "debug" (get_log_tags ()) then
+      _assert [%here] "sanity check" (unique_quantifiers prop)
+  in
   let p1 = to_nnf prop in
   let () =
     _log_queries @@ fun _ ->
     Pp.printf "@{<bold>To NNF:@} %s\n" (Front.layout_prop p1)
   in
-  (* let p2 = to_snf p1 in *)
-  (* let () = *)
-  (*   _log_queries @@ fun _ -> *)
-  (*   Pp.printf "@{<bold>To SNF:@} %s\n" (Front.layout_prop p2) *)
-  (* in *)
   aux p1

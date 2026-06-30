@@ -4,19 +4,15 @@ open Syntax
 open Zdatatype
 open Sugar
 
-let _log = Myconfig._log "axiom"
+let _log = ZUtilsConfig._log "axiom"
 
-let add_laxiom asys (name, tasks, prop, z3_prop) =
-  let tasks = StrSet.of_list tasks in
+let add_laxiom asys (name, prop) =
   let preds = StrSet.of_list @@ get_fv_preds_from_prop prop in
-  if StrMap.mem name asys then _die [%here]
-  else StrMap.add name { tasks; preds; prop; z3_prop } asys
+  if StrMap.mem name asys then
+    _die_with [%here] (spf "duplicate axiom name: %s" name)
+  else StrMap.add name { preds; prop } asys
 
 let add_laxioms asys l = List.fold_left add_laxiom asys l
-
-let find_axioms_by_task asys task =
-  let m = StrMap.filter (fun _ { tasks; _ } -> StrSet.mem task tasks) asys in
-  StrMap.to_key_list m
 
 let find_axioms_by_preds asys query_preds =
   let m =
@@ -30,30 +26,26 @@ let find_axioms_by_preds asys query_preds =
   in
   StrMap.to_key_list m
 
-let pred_extension (_, ps) =
+(* Single pass, not a fixpoint: a rule fires only if its key is already in [ps]
+   when reached, so each rule must list its full transitive closure — under-listing
+   silently under-extends. *)
+let pred_extension ps =
   let rules =
     List.map
       (fun (k, vs) -> (StrSet.singleton k, vs))
-      (Myconfig.get_pred_extension_rules ())
+      (ZUtilsConfig.get_pred_extension_rules ())
   in
-  let ps =
-    List.fold_left
-      (fun ps (rname, new_preds) ->
-        let new_preds = if StrSet.subset rname ps then new_preds else [] in
-        let ps = StrSet.add_seq (List.to_seq new_preds) ps in
-        ps)
-      ps rules
-  in
-  ps
+  List.fold_left
+    (fun ps (rname, new_preds) ->
+      if StrSet.subset rname ps then StrSet.add_seq (List.to_seq new_preds) ps
+      else ps)
+    ps rules
 
-(** instantiate_poly_axioms *)
-
-(* The first type has poly var *)
+(* Type of the first quantified var whose type is the poly var, if any. *)
 let find_first_poly_type_from_axiom prop =
   let rec aux prop =
     match prop with
     | Exists { body; qv } | Forall { body; qv } -> (
-        (* let () = Printf.printf "qv.ty : %s\n" (Nt.layout qv.ty) in *)
         match Nt.gather_type_vars qv.ty with
         | [ x ] when String.equal unified_axiom_type_var x -> Some qv
         | [] -> aux body
@@ -69,20 +61,14 @@ let find_first_poly_type_from_axiom prop =
       (fun res x -> match res with None -> aux x | Some qv -> Some qv)
       None l
   in
-  match aux prop with
-  | None ->
-      let () =
-        _log @@ fun () ->
-        Printf.printf "normal type %s\n" (Front.layout_prop prop)
-      in
-      None
-  | Some x ->
-      let () =
-        _log @@ fun () ->
+  let res = aux prop in
+  ( _log @@ fun () ->
+    match res with
+    | None -> Printf.printf "normal type %s\n" (Front.layout_prop prop)
+    | Some x ->
         Pp.printf "@{<bold>Axiom Indicator Type %s@} in %s\n" (Nt.layout x.ty)
-          (Front.layout_prop prop)
-      in
-      Some x.ty
+          (Front.layout_prop prop) );
+  Option.map (fun x -> x.ty) res
 
 type inst_res = Mono | NoPoly | PolyAss of Nt.t
 
@@ -93,27 +79,26 @@ let gather_indicator_types query axioms =
       (fun s (_, { preds; _ }) -> StrSet.union preds s)
       StrSet.empty axioms
   in
-  let typed_preds =
+  let relevant_preds =
     List.filter (fun x -> StrSet.mem x.x preds_in_aximos) typed_preds
   in
-  let get_actual_types pred_name =
-    List.filter_map
-      (fun p ->
-        if String.equal pred_name p.x then
-          let params, _ = Nt.destruct_arr_tp p.ty in
-          match params with
-          | [] ->
-              None
-              (* _die_with [%here] (spf "%s: %s" pred_name (Nt.layout p.ty)) *)
-          | x :: _ -> Some x
-        else None)
-      typed_preds
+  (* first parameter type of each relevant predicate, grouped by name; nullary
+     preds contribute nothing. *)
+  let first_params_by_name =
+    List.fold_left
+      (fun m p ->
+        let params, _ = Nt.destruct_arr_tp p.ty in
+        match params with
+        | [] -> m
+        | x :: _ ->
+            StrMap.update p.x
+              (fun prev -> Some (x :: Option.value ~default:[] prev))
+              m)
+      StrMap.empty relevant_preds
   in
   let indicator_types =
     List.slow_rm_dup Nt.equal_nt
-    @@ List.concat_map
-         (fun pred_name -> get_actual_types pred_name.x)
-         typed_preds
+    @@ List.concat_map snd (StrMap.to_kv_list first_params_by_name)
   in
   let instantiate_axiom_by_ty ax ax_fst_ty ty =
     let tvars = Nt.gather_type_vars ty in
@@ -174,22 +159,23 @@ let gather_indicator_types query axioms =
           (match ty with None -> "mono" | Some ty -> Nt.layout ty))
       props
   in
-  List.map snd props
+  List.map (fun ((name, _ty), prop) -> (name, prop)) props
 
 let emp = StrMap.empty
 
-let find_axioms asys (task, query) =
+(* Every loaded axiom as (name, prop), like [find_axioms] but unfiltered. *)
+let all_axioms asys =
+  List.map (fun (name, { prop; _ }) -> (name, prop)) (StrMap.to_kv_list asys)
+
+let find_axioms asys query =
   let query_preds = StrSet.of_list @@ get_fv_preds_from_prop query in
-  let query_preds = pred_extension (task, query_preds) in
-  let axiom1 =
-    match task with None -> [] | Some task -> find_axioms_by_task asys task
-  in
+  let query_preds = pred_extension query_preds in
   ( _log @@ fun () ->
-    Pp.printf "@{<bold>%s@}: %s\n"
-      (layout_option (fun x -> x) task)
+    Pp.printf "@{<bold>query preds@}: %s\n"
       (StrList.to_string @@ StrSet.to_list query_preds) );
   let axiom2 = find_axioms_by_preds asys query_preds in
-  let axioms = List.slow_rm_dup String.equal (axiom1 @ axiom2) in
+  let axiom_set = StrSet.of_list axiom2 in
+  let axioms = StrSet.to_list axiom_set in
   let () =
     _log @@ fun () ->
     Pp.printf "@{<bold>Axioms by pred: @} %s\n" @@ StrList.to_string axiom2
@@ -198,8 +184,6 @@ let find_axioms asys (task, query) =
     _log @@ fun () ->
     Pp.printf "@{<bold>Axioms: @} %s\n" @@ StrList.to_string axioms
   in
-  let props =
-    StrMap.filter (fun name _ -> List.exists (String.equal name) axioms) asys
-  in
+  let props = StrMap.filter (fun name _ -> StrSet.mem name axiom_set) asys in
   let axioms = gather_indicator_types query (StrMap.to_kv_list props) in
   axioms

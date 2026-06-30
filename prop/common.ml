@@ -89,7 +89,7 @@ let rawsetting =
     sym_false = "false";
     sym_and = " && ";
     sym_or = " || ";
-    sym_not = "~";
+    sym_not = "not";
     sym_implies = "=>";
     sym_iff = "<=>";
     sym_forall = "∀";
@@ -97,19 +97,4 @@ let rawsetting =
     layout_typedid = (fun x -> x.x);
     (* (fun x ->          Printf.spf "(%s:%s)" x.x (Ty.layout x.ty)); *)
     layout_mp = (fun x -> x);
-  }
-
-let coqsetting =
-  {
-    sym_true = "True";
-    sym_false = "False";
-    sym_and = " /\\ ";
-    sym_or = " \\/ ";
-    sym_not = "~";
-    sym_implies = "->";
-    sym_iff = "<->";
-    sym_forall = "forall ";
-    sym_exists = "exists ";
-    layout_typedid = (fun x -> x.x);
-    layout_mp = (function "==" -> "=" | x -> x);
   }

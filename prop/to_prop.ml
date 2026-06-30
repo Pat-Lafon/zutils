@@ -39,10 +39,11 @@ let layout_prop_
       sym_forall;
       sym_exists;
       layout_typedid;
+      layout_mp;
       _;
     } =
   let rec layout = function
-    | Lit lit -> (layout_typed_lit lit, true)
+    | Lit lit -> (layout_typed_lit_mp layout_mp lit, false)
     | Implies (p1, p2) ->
         (spf "%s %s %s" (p_layout p1) sym_implies (p_layout p2), false)
     | And [ p ] -> layout p
@@ -51,7 +52,7 @@ let layout_prop_
     | Or [ p1; p2 ] -> (spf "%s%s%s" (p_layout p1) sym_or (p_layout p2), false)
     | And ps -> (spf "%s" @@ List.split_by sym_and p_layout ps, false)
     | Or ps -> (spf "%s" @@ List.split_by sym_or p_layout ps, false)
-    | Not p -> (spf "%s%s" sym_not (p_layout p), true)
+    | Not p -> (spf "%s (%s)" sym_not (fst (layout p)), true)
     | Iff (p1, p2) -> (spf "%s %s %s" (p_layout p1) sym_iff (p_layout p2), false)
     | Ite (p1, p2, p3) ->
         ( spf "if %s then %s else %s"
@@ -152,6 +153,5 @@ let prop_of_expr expr =
 let layout_prop__raw x = string_of_expression @@ prop_to_expr x
 let layout_prop expr = layout_prop_ psetting expr
 let layout_prop_ocaml expr = layout_prop_ rawsetting expr
-let layout_prop_to_coq expr = layout_prop_ coqsetting expr
 let layout = layout_prop
 let of_expr = prop_of_expr

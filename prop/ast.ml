@@ -84,7 +84,7 @@ let eq_prop p1 p2 = equal_prop (fun _ _ -> true) p1 p2
 let uAVar x = AVar (Nt.untyped x)
 
 let sort_lit_record args =
-  if Myconfig.get_if_sort_record () then
+  if ZUtilsConfig.get_if_sort_record () then
     List.sort (fun a b -> String.compare (fst a) (fst b)) args
   else args
 
@@ -110,11 +110,5 @@ open Zdatatype
 
 let unified_axiom_type_var = "a"
 
-type laxiom = {
-  tasks : StrSet.t;
-  preds : StrSet.t;
-  prop : Nt.t prop;
-  z3_prop : Z3.Expr.expr;
-}
-
+type laxiom = { preds : StrSet.t; prop : Nt.t prop }
 type laxiom_system = laxiom StrMap.t

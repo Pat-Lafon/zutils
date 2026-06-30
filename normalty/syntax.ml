@@ -30,19 +30,8 @@ let rec construct_poly_nt = function
   | x :: xs, ty -> Ty_poly (x, construct_poly_nt (xs, ty))
 
 let wf_nt t =
-  let rec aux tvars = function
-    | Ty_var _ | Ty_unknown -> true
-    | Ty_constructor (_, tps) -> List.for_all (aux tvars) tps
-    | Ty_record { fds; _ } -> List.for_all (fun x -> aux tvars x.ty) fds
-    | Ty_arrow (nt1, nt2) -> List.for_all (aux tvars) [ nt1; nt2 ]
-    | Ty_tuple nts -> List.for_all (aux tvars) nts
-    | Ty_poly _ -> false
-  in
-  let rec aux_top tvars = function
-    | Ty_poly (x, ty) -> aux_top (x :: tvars) ty
-    | _ as ty -> aux tvars ty
-  in
-  aux_top [] t
+  let _, body = _lift_poly_tp t in
+  not (exists_nt (function Ty_poly _ -> true | _ -> false) body)
 
 let close_poly_nt loc t =
   let t = construct_poly_nt (gather_type_vars t, t) in
@@ -74,7 +63,7 @@ let layout_nt = Frontend.layout_nt
 (* NOTE: the Z3 encoding use list instead of map, thus we need to make sure the input list has the same order *)
 
 let sort_record args =
-  if Myconfig.get_if_sort_record () then
+  if ZUtilsConfig.get_if_sort_record () then
     List.sort (fun a b -> String.compare a.x b.x) args
   else args
 

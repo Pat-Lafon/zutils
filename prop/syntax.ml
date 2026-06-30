@@ -40,22 +40,20 @@ let mk_nth_lit loc lit n = (AProj (lit, n))#:(Nt.get_nth_ty loc lit.ty n)
 
 (** lit *)
 
-let rec fv_lit (lit_e : 't lit) =
+let rec fold_lit f acc (lit_e : 't lit) =
+  let acc = f acc lit_e in
   match lit_e with
-  | AC _ -> []
-  | AVar _t_stringtyped0 -> [] @ [ _t_stringtyped0 ]
-  | ATu _t__tlittypedlist0 ->
-      [] @ List.concat (List.map typed_fv_lit _t__tlittypedlist0)
-  | AProj (_t__tlittyped0, _) -> [] @ typed_fv_lit _t__tlittyped0
-  | ARecord _t__tlittypedlist0 ->
-      []
-      @ List.concat
-          (List.map (fun (_, lit) -> typed_fv_lit lit) _t__tlittypedlist0)
-  | AField (_t__tlittyped0, _) -> [] @ typed_fv_lit _t__tlittyped0
-  | AAppOp (_, _t__tlittypedlist1) ->
-      [] @ List.concat (List.map typed_fv_lit _t__tlittypedlist1)
+  | AC _ | AVar _ -> acc
+  | ATu l | AAppOp (_, l) ->
+      List.fold_left (fun acc t -> fold_lit f acc t.x) acc l
+  | AProj (t, _) | AField (t, _) -> fold_lit f acc t.x
+  | ARecord l -> List.fold_left (fun acc (_, t) -> fold_lit f acc t.x) acc l
 
-and typed_fv_lit (lit_e : ('t, 't lit) typed) = fv_lit lit_e.x
+let fv_lit (lit_e : 't lit) =
+  List.rev
+  @@ fold_lit (fun acc -> function AVar v -> v :: acc | _ -> acc) [] lit_e
+
+let typed_fv_lit (lit_e : ('t, 't lit) typed) = fv_lit lit_e.x
 
 let rec subst_lit (string_x : string) f (lit_e : 't lit) =
   match lit_e with
@@ -81,6 +79,18 @@ let rec subst_lit (string_x : string) f (lit_e : 't lit) =
 
 and typed_subst_lit (string_x : string) f (lit_e : ('t, 't lit) typed) =
   lit_e#->(subst_lit string_x f)
+
+let rec map_op f (lit_e : 't lit) =
+  match lit_e with
+  | AC _ | AVar _ -> lit_e
+  | ATu l -> ATu (List.map (typed_map_op f) l)
+  | AProj (lit, n) -> AProj (typed_map_op f lit, n)
+  | ARecord l ->
+      ARecord (List.map (fun (fd, lit) -> (fd, typed_map_op f lit)) l)
+  | AField (lit, fd) -> AField (typed_map_op f lit, fd)
+  | AAppOp (op, args) -> AAppOp (op#->f, List.map (typed_map_op f) args)
+
+and typed_map_op f (lit_e : ('t, 't lit) typed) = lit_e#->(map_op f)
 
 let rec map_lit : 't 's. ('t -> 's) -> 't lit -> 's lit =
  fun f lit_e ->
@@ -108,7 +118,6 @@ let subst_lit_instance x instance e = subst_f_to_instance subst_lit x instance e
 
 let typed_subst_lit_instance x instance e =
   subst_f_to_instance typed_subst_lit x instance e
-(* Generated from _lit.ml *)
 
 (* force *)
 let typed_lit_force_aappop_opt (lit, op) =
@@ -265,6 +274,16 @@ let rec map_prop (f : 't -> 's) (prop_e : 't prop) =
 and typed_map_prop (f : 't -> 's) (prop_e : ('t, 't prop) typed) =
   prop_e#=>f#->(map_prop f)
 
+let rec fold_prop f acc prop_e =
+  let acc = f acc prop_e in
+  match prop_e with
+  | Lit _ -> acc
+  | Not p -> fold_prop f acc p
+  | Implies (a, b) | Iff (a, b) -> fold_prop f (fold_prop f acc a) b
+  | Ite (a, b, c) -> fold_prop f (fold_prop f (fold_prop f acc a) b) c
+  | And ps | Or ps -> List.fold_left (fold_prop f) acc ps
+  | Forall { body; _ } | Exists { body; _ } -> fold_prop f acc body
+
 let fv_prop_id e = fv_typed_id_to_id fv_prop e
 let typed_fv_prop_id e = fv_typed_id_to_id typed_fv_prop e
 
@@ -273,7 +292,6 @@ let subst_prop_instance x instance e =
 
 let typed_subst_prop_instance x instance e =
   subst_f_to_instance typed_subst_prop x instance e
-(* Generated from _prop.ml *)
 
 (* force *)
 let prop_force_typed_lit_opt prop =
@@ -597,11 +615,11 @@ let fresh_name_prop =
     | Or es -> smart_or (List.map aux es)
     | Iff (e1, e2) -> Iff (aux e1, aux e2)
     | Forall { qv; body } ->
-        let qv' = qv#->Rename.unique_var in
+        let qv' = qv#->Rename.unique in
         let body = subst_prop_instance qv.x (AVar qv') body in
         Forall { qv = qv'; body = aux body }
     | Exists { qv; body } ->
-        let qv' = qv#->Rename.unique_var in
+        let qv' = qv#->Rename.unique in
         let body = subst_prop_instance qv.x (AVar qv') body in
         Exists { qv = qv'; body = aux body }
   in
@@ -763,11 +781,6 @@ let to_nnf prop =
   in
   let res = aux false prop in
   res
-
-(* let to_snf prop = match prop with Exists { body; _ } -> body | _ -> prop *)
-(* let qvs, prop = lift_ex_quantifiers prop in *)
-(* let qvs = match qvs with [] -> [] | _ :: qvs -> qvs in *)
-(* smart_exists qvs prop *)
 
 let snf_quantified_var_by_name name =
   let rec aux prop =

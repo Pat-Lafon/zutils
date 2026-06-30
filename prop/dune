@@ -5,7 +5,7 @@
  (public_name zutils.prop)
  (wrapped true)
  (modules_without_implementation)
- (libraries sugar normalty core ocamlParser ppxlib z3 myconfig typectx)
+ (libraries sugar normalty unix ocamlParser ppxlib z3 zutilsConfig typectx)
  (modules
   prop
   ast
@@ -18,7 +18,6 @@
   to_lit
   to_notation
   to_prop
-  to_axiom
   to_ctx
   front
   ;; Typecheck
@@ -27,6 +26,8 @@
   typecheck
   ;; Prover
   dtencoding
+  func_encoding
+  portfolio
   z3aux
   constencoding
   litencoding
@@ -35,6 +36,7 @@
   data
   simplProp
   prover
+  rename_test
   test)
  (preprocess
   (pps

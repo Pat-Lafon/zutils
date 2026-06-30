@@ -1,7 +1,6 @@
 open Sexplib.Std
 
 type stream_cell = Nil | Cons of int * stream [@@deriving sexp]
-
 and stream = stream_cell Lazy.t [@@deriving sexp]
 
 let ( !$ ) = Lazy.force
@@ -23,10 +22,10 @@ let rec ( ++ ) s1 s2 =
 let rec take n s =
   lazy
     (if n = 0 then Nil
-    else
-      match s with
-      | (lazy Nil) -> Nil
-      | (lazy (Cons (hd, tl))) -> Cons (hd, take (n - 1) tl))
+     else
+       match s with
+       | (lazy Nil) -> Nil
+       | (lazy (Cons (hd, tl))) -> Cons (hd, take (n - 1) tl))
 
 let rec drop n s =
   lazy
@@ -49,7 +48,6 @@ type t = stream * int list * stream [@@deriving sexp]
 open Zlist
 
 let flatten (a, b, c) = to_list a @ b @ to_list c
-
 let length l = List.length @@ flatten l
 
 let to_string (a, b, c) =
@@ -66,9 +64,7 @@ let compare (a1, b1, c1) (a2, b2, c2) =
     if tmp != 0 then tmp else List.compare compare (to_list c1) (to_list c2)
 
 let eq t1 t2 = compare t1 t2 == 0
-
 let empty = (lazy Nil, [], lazy Nil)
-
 let is_empty = function (lazy Nil), _, _ -> true | _ -> false
 
 let rec rotate = function

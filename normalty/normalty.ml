@@ -30,23 +30,12 @@ let string_of_nts = string_of_nts
 let untyped x = { x; ty = Ty_unknown }
 let nt_name nt = String.concat "_" @@ String.split_on_char ' ' @@ layout_nt nt
 
-let instantiate_poly_type_var_in_smt tp =
-  let rec aux tp =
-    match tp with
-    | Ty_var _ -> int_ty (* Ty_var unified_type_var *)
-    | Ty_unknown -> tp
-    | Ty_constructor (name, tps) -> Ty_constructor (name, List.map aux tps)
-    | Ty_record { alias; fds } ->
-        Ty_record { alias; fds = List.map (fun x -> x#=>aux) fds }
-    | Ty_arrow (nt1, nt2) -> Ty_arrow (aux nt1, aux nt2)
-    | Ty_tuple nts -> Ty_tuple (List.map aux nts)
-    | Ty_poly _ -> _die [%here]
-  in
-  aux tp
+let instantiate_poly_type_var_in_smt =
+  map_nt (function Ty_var _ -> int_ty | Ty_poly _ -> _die [%here] | ty -> ty)
 
 let to_smtty t =
   let t =
-    if Myconfig.get_instantiate_poly_type_var_in_smt () then
+    if ZUtilsConfig.get_instantiate_poly_type_var_in_smt () then
       instantiate_poly_type_var_in_smt t
     else t
   in
@@ -86,17 +75,7 @@ let rec layout_smtty = function
       spf "{%s}"
         (List.split_by "; " (fun x -> spf "%s: %s" x.x (layout_smtty x.ty)) ts)
 
-let has_poly_tp tp =
-  let rec aux tp =
-    match tp with
-    | Ty_var _ | Ty_unknown -> false
-    | Ty_constructor (_, tps) -> List.exists aux tps
-    | Ty_record { fds; _ } -> List.exists (fun x -> aux x.ty) fds
-    | Ty_arrow (nt1, nt2) -> List.exists aux [ nt1; nt2 ]
-    | Ty_tuple nts -> List.exists aux nts
-    | Ty_poly _ -> true
-  in
-  aux tp
+let has_poly_tp = exists_nt (function Ty_poly _ -> true | _ -> false)
 
 let lift_poly_tp tp =
   _assert [%here]
