@@ -8,10 +8,17 @@ type z3_data_type = {
   accessors : (string * Z3.FuncDecl.func_decl) list;
 }
 
-let datatype_map : (string, z3_data_type) Hashtbl.t = Hashtbl.create 5
+(* A Z3 ctx bundled with the decl maps whose entries are only valid against it:
+   applying a decl built in one ctx against another is a Z3 error, so the ctx and
+   its maps travel as one value. *)
+type z3_env = {
+  ctx : Z3.context;
+  datatype_map : (string, z3_data_type) Hashtbl.t;
+  rec_func_map : (string, Z3.FuncDecl.func_decl) Hashtbl.t;
+}
 
-let z3_data_type_get (s : string) : z3_data_type option =
-  Hashtbl.find_opt datatype_map s
+let z3_data_type_get (env : z3_env) (s : string) : z3_data_type option =
+  Hashtbl.find_opt env.datatype_map s
 
 let z3_data_type_func_get (dt : z3_data_type) (f : string) :
     Z3.FuncDecl.func_decl option =
@@ -22,40 +29,10 @@ let z3_data_type_func_get (dt : z3_data_type) (f : string) :
       | Some _ as r -> r
       | None -> List.assoc_opt f dt.accessors)
 
-let z3_data_type_func_lookup (dt_name : string) (f : string) :
+let z3_data_type_func_lookup (env : z3_env) (dt_name : string) (f : string) :
     Z3.FuncDecl.func_decl option =
-  Option.bind (z3_data_type_get dt_name) (fun dt -> z3_data_type_func_get dt f)
-
-(* Constructor case fed to [create_data_type]: [(name, [(field_name, field_sort_or_self_ref)])].
-   [None] in the sort slot is the Z3 marker for "this datatype" (self-recursive field). *)
-type case = string * (string * Z3.Sort.sort option) list
-
-let create_constructor ctx (case : case) =
-  let name, args = case in
-  let symbols, types =
-    List.map (fun (s, t) -> (Z3.Symbol.mk_string ctx s, t)) args |> List.split
-  in
-  let zeros = List.map (fun _ -> 0) types in
-  let recognizer = Z3.Symbol.mk_string ctx ("is_" ^ name) in
-  Z3.Datatype.mk_constructor_s ctx name recognizer symbols types zeros
-
-let create_data_type ctx name (cases : case list) =
-  let init_constructors = List.map (create_constructor ctx) cases in
-  let sort = Z3.Datatype.mk_sort_s ctx name init_constructors in
-  let dt_constructors = Z3.Datatype.get_constructors sort in
-  let constructor_names = List.map fst cases in
-  let constructors = List.combine constructor_names dt_constructors in
-  let recognizers =
-    List.combine
-      (List.map (fun c -> "is_" ^ c) constructor_names)
-      (Z3.Datatype.get_recognizers sort)
-  in
-  let accessors =
-    List.combine cases (Z3.Datatype.get_accessors sort)
-    |> List.map (fun (a, b) -> List.combine (snd a |> List.map fst) b)
-    |> List.flatten
-  in
-  { sort; constructors; recognizers; accessors }
+  Option.bind (z3_data_type_get env dt_name) (fun dt ->
+      z3_data_type_func_get dt f)
 
 (* OCaml-side declaration registry. Populated at config-load by walking
    [data_type_decls.ml] items; consumed at Z3 ctx creation by
@@ -67,26 +44,41 @@ type datatype_decl = { dt_name : string; ctors : ctor_spec list }
 let decl_registry : (string, datatype_decl) Hashtbl.t = Hashtbl.create 5
 
 let register_decl (d : datatype_decl) : unit =
+  let all_fields =
+    List.concat_map (fun c -> List.map (fun f -> f.fname) c.fields) d.ctors
+  in
+  if
+    List.length all_fields
+    <> List.length (List.sort_uniq String.compare all_fields)
+  then
+    failwith
+      (Printf.sprintf
+         "datatype %s has constructors sharing a field name; \
+          Recdef_encoding.bind_args projects by bare field name and would \
+          route through the wrong constructor"
+         d.dt_name);
+  let cnames = List.map (fun c -> c.cname) d.ctors in
+  if List.length cnames <> List.length (List.sort_uniq String.compare cnames)
+  then
+    failwith
+      (Printf.sprintf
+         "datatype %s has constructors that collapse to the same name; \
+          register_all_for_ctx emits one Z3 constructor per cname and would \
+          merge them"
+         d.dt_name);
   Hashtbl.replace decl_registry d.dt_name d
 
-(* True iff [opname] is the field name of some constructor of some registered
-   datatype (i.e. a datatype accessor like [head]/[tail]/[left]/[color]/...).
-   Used by [SimplProp.simpl_query_by_eq] to refuse inlining existentials whose
-   defining equation is an accessor application: the Lean dump path needs the
-   bridging existential so Lean's [Some] coercion can reconcile its Option-
-   wrapped accessor types with Cobb's raw view. *)
 let is_dt_accessor (opname : string) : bool =
   Hashtbl.fold
     (fun _ decl acc ->
       acc
       || List.exists
-           (fun ctor ->
-             List.exists (fun f -> f.fname = opname) ctor.fields)
+           (fun ctor -> List.exists (fun f -> f.fname = opname) ctor.fields)
            decl.ctors)
     decl_registry false
 
-(* External references to *other registered datatypes*. Builtin types
-   (int/bool/...) don't gate ordering — they go straight through [tp_to_sort]. *)
+(* Edges for [topo_sort_decls]: the *other* registered datatypes [d]'s fields
+   reference. *)
 let external_dt_refs (d : datatype_decl) : string list =
   List.concat_map
     (fun c ->
@@ -101,11 +93,9 @@ let external_dt_refs (d : datatype_decl) : string list =
     d.ctors
   |> List.sort_uniq String.compare
 
-(* Topological order over [decl_registry] by cross-datatype references.
-   Self-references are fine (encoded as [None] inside [register_all_for_ctx]).
-   Mutual recursion across two registered datatypes hits the [_die] path —
-   Z3's [mk_sorts_s] would be required to support it; no current benchmark
-   needs it. *)
+(* Topological order over [decl_registry] by cross-datatype references: a datatype
+   must come before the ones referencing it, so the Lean/Coq export paths emit it
+   first and [register_all_for_ctx] builds its sort first. *)
 let topo_sort_decls () : datatype_decl list =
   let all = Hashtbl.fold (fun _ d acc -> d :: acc) decl_registry [] in
   let rec loop done_names acc remaining =
@@ -115,9 +105,7 @@ let topo_sort_decls () : datatype_decl list =
         let ready, blocked =
           List.partition
             (fun d ->
-              List.for_all
-                (fun r -> List.mem r done_names)
-                (external_dt_refs d))
+              List.for_all (fun r -> List.mem r done_names) (external_dt_refs d))
             remaining
         in
         match ready with
@@ -125,40 +113,67 @@ let topo_sort_decls () : datatype_decl list =
             _die_with [%here]
               (Printf.sprintf
                  "Dtencoding: mutually recursive datatypes not supported: %s"
-                 (String.concat ", "
-                    (List.map (fun d -> d.dt_name) blocked)))
+                 (String.concat ", " (List.map (fun d -> d.dt_name) blocked)))
         | _ ->
             let new_done = List.map (fun d -> d.dt_name) ready @ done_names in
             loop new_done (List.rev_append ready acc) blocked)
   in
   loop [] [] all
 
-(* Build Z3 sorts for every registered decl against [ctx] and stash them in
-   [datatype_map]. Caller supplies [tp_to_sort] to break the cycle with
-   [Z3aux] (which itself consults [datatype_map] inside [smt_tp_to_sort]). *)
-let register_all_for_ctx ctx
-    (tp_to_sort : Z3.context -> nt -> Z3.Sort.sort) : unit =
-  Hashtbl.clear datatype_map;
-  let ordered = topo_sort_decls () in
-  List.iter
-    (fun decl ->
-      let cases =
-        List.map
-          (fun ctor ->
-            let args =
-              List.map
-                (fun f ->
-                  let sort_opt =
-                    match f.ftype with
-                    | Ty_constructor (n, []) when n = decl.dt_name -> None
-                    | nt -> Some (tp_to_sort ctx nt)
-                  in
-                  (f.fname, sort_opt))
-                ctor.fields
-            in
-            (ctor.cname, args))
-          decl.ctors
+(* Z3 returns each [func_decl] in the order its constructor (and that
+   constructor's fields) were handed to [mk_sorts_s] — i.e. [ctors] order — so a
+   positional [combine] re-attaches the names. *)
+let extract_z3_data_type sort (ctors : ctor_spec list) : z3_data_type =
+  let constructors =
+    List.combine
+      (List.map (fun c -> c.cname) ctors)
+      (Z3.Datatype.get_constructors sort)
+  in
+  let recognizers =
+    List.combine
+      (List.map (fun c -> "is_" ^ c.cname) ctors)
+      (Z3.Datatype.get_recognizers sort)
+  in
+  let accessors =
+    List.combine
+      (List.map (fun c -> List.map (fun f -> f.fname) c.fields) ctors)
+      (Z3.Datatype.get_accessors sort)
+    |> List.concat_map (fun (fnames, accs) -> List.combine fnames accs)
+  in
+  { sort; constructors; recognizers; accessors }
+
+(* In the self-ref branch [(None, 0)] is Z3's forward reference: [None] = no prebuilt
+   sort, sort_ref [0] = the lone sort [mk_sort_s] is building. [tp_to_sort] is a
+   parameter because its home [Z3aux] depends on this module. *)
+let register_all_for_ctx ctx (tp_to_sort : z3_env -> nt -> Z3.Sort.sort) :
+    z3_env =
+  let env =
+    { ctx; datatype_map = Hashtbl.create 5; rec_func_map = Hashtbl.create 5 }
+  in
+  let build_one decl =
+    let build_constructor ctor =
+      let field_names =
+        List.map (fun f -> Z3.Symbol.mk_string ctx f.fname) ctor.fields
       in
-      let dt = create_data_type ctx decl.dt_name cases in
-      Hashtbl.replace datatype_map decl.dt_name dt)
-    ordered
+      let sorts, sort_refs =
+        List.map
+          (fun f ->
+            match f.ftype with
+            | Ty_constructor (n, []) when n = decl.dt_name -> (None, 0)
+            | ty -> (Some (tp_to_sort env ty), 0))
+          ctor.fields
+        |> List.split
+      in
+      Z3.Datatype.mk_constructor_s ctx ctor.cname
+        (Z3.Symbol.mk_string ctx ("is_" ^ ctor.cname))
+        field_names sorts sort_refs
+    in
+    let sort =
+      Z3.Datatype.mk_sort_s ctx decl.dt_name
+        (List.map build_constructor decl.ctors)
+    in
+    Hashtbl.replace env.datatype_map decl.dt_name
+      (extract_z3_data_type sort decl.ctors)
+  in
+  List.iter build_one (topo_sort_decls ());
+  env

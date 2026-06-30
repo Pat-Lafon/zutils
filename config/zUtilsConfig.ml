@@ -11,17 +11,36 @@ type options = {
 }
 [@@deriving of_yojson { strict = true }]
 
-type smt_encoding = Axiom | Both [@@deriving of_yojson]
+(* SMT encoding for method predicates. [Axiom] keeps the quantified
+   method-predicate axioms and solves on those; [Both] additionally races a
+   recursive [define-fun-rec] encoding against them in the subprocess
+   portfolio. [Both] requires the program to define recursive [let rec]
+   measures for that encoding to race against. *)
+type smt_encoding = Axiom | Both
+
+let smt_encoding_of_yojson = function
+  | `String "axiom" -> Ok Axiom
+  | `String "both" -> Ok Both
+  | `String s ->
+      Error
+        (Printf.sprintf
+           "zutils.smt_encoding: unknown value %S (expected \"axiom\" | \
+            \"both\")"
+           s)
+  | _ -> Error "zutils.smt_encoding: expected a string"
 
 type t = {
   max_printing_size : int; [@default 300]
   log_tags : string list; [@default []]
   prover_timeout_bound : int; [@default 1999]
   options : options; [@default Result.get_ok (options_of_yojson (`Assoc []))]
-  pred_extension_rules : (string list * string list) list; [@default []]
+  pred_extension_rules : (string * string list) list; [@default []]
   smt_encoding : smt_encoding; [@default Axiom]
 }
 [@@deriving of_yojson { strict = true }]
+
+(* Derived from the [@default] attributes by parsing an empty object. *)
+let default = Result.get_ok (of_yojson (`Assoc []))
 
 include ConfigSection.Make (struct
   type nonrec t = t
@@ -53,3 +72,14 @@ let get_show_type_infer_constant_judgement () =
 
 let get_show_type_infer_variable_judgement () =
   (get ()).options.show_type_infer_variable_judgement
+
+let _log kw (f : unit -> unit) =
+  if List.exists (String.equal kw) (get_log_tags ()) then f ()
+
+let _log_preprocess = _log "preprocess"
+let _log_result = _log "result"
+let _log_typing = _log "typing"
+let _log_queries = _log "queries"
+let _log_dump_smt = _log "dump_smt"
+let _log_stat = _log "stat"
+let _log_debug = _log "debug"

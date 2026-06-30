@@ -4,6 +4,8 @@ open Zdatatype
 
 (** Simplify Query *)
 
+let _log = ZUtilsConfig._log "simplProp"
+
 let lit_is_var_by_name x lit =
   match lit.x with AVar a when String.equal a.x x -> true | _ -> false
 
@@ -77,9 +79,7 @@ let instantiate_quantified_bool =
           let body_true =
             fresh_name_prop @@ subst_prop_instance qv.x mk_lit_true body
           in
-          let body_false =
-            fresh_name_prop @@ subst_prop_instance qv.x mk_lit_false body
-          in
+          let body_false = subst_prop_instance qv.x mk_lit_false body in
           simpl_eq_in_prop (smart_or [ body_true; body_false ])
         else Exists { body; qv }
     | Forall { body; qv } ->
@@ -88,9 +88,7 @@ let instantiate_quantified_bool =
           let body_true =
             fresh_name_prop @@ subst_prop_instance qv.x mk_lit_true body
           in
-          let body_false =
-            fresh_name_prop @@ subst_prop_instance qv.x mk_lit_false body
-          in
+          let body_false = subst_prop_instance qv.x mk_lit_false body in
           let () =
             ZUtilsLog.simpl_prop @@ fun () ->
             Printf.printf "body: %s\n" @@ Front.layout body;
@@ -201,7 +199,7 @@ let simpl_query_by_eq (query : Nt.t prop) =
         let body = aux body in
         match find_eq_lit_in_prop qv.x body with
         | None -> Exists { body; qv }
-        | Some lit -> (
+        | Some lit ->
             (* Refuse to inline when the defining equation is a datatype
                accessor application (e.g. `qv == left v`). The Lean dump
                path needs the bridging existential so Lean's `Some`
@@ -218,7 +216,7 @@ let simpl_query_by_eq (query : Nt.t prop) =
               let body = subst_prop_instance qv.x lit.x body in
               let body = simpl_eq_in_prop body in
               let body = simpl_no_used_quantifiers body in
-              body))
+              body)
     | Forall { body; qv } -> Forall { body = aux body; qv }
     | And l -> smart_and (List.map aux l)
     | Or l -> smart_or (List.map aux l)

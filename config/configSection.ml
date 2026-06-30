@@ -1,5 +1,6 @@
-(* Strictness is per-section: the root stays an untyped [string -> json] map, so
-   an unknown top-level key is never read. *)
+(* Strict-parse the named section out of the parsed root; both a missing section
+   and a bad field failwith. The root is an untyped [string -> json] map, so
+   unknown top-level keys are never read. *)
 let parse root name of_yojson =
   match Yojson.Safe.Util.member name root with
   | `Null -> failwith (Printf.sprintf "meta-config: missing section %S" name)
@@ -9,6 +10,8 @@ let parse root name of_yojson =
       | Error e -> failwith (Printf.sprintf "meta-config section %S: %s" name e)
       )
 
+(* Each section is a set-once cell: the entry point [set]s it from the parsed
+   root, scattered readers [get] it. *)
 module type SECTION = sig
   type t
 

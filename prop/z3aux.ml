@@ -46,23 +46,20 @@ let z3_tt_name = "tt"
 let mk_some_name ty = spf "Some_%s" (layout_smtty ty)
 let mk_none_name ty = spf "None_%s" (layout_smtty ty)
 
-type env = {
-  sorts : (nt, Sort.sort) Hashtbl.t;
-  datatypes : (string, Sort.sort) Hashtbl.t;
-  (* The datatypes' decls, by name. *)
-  funcs : (string, FuncDecl.func_decl) Hashtbl.t;
-}
-
-(* Z3 sorts and declarations are bound to the context that built them. *)
-let envs : (context * env) list ref = ref []
-
-let rec smt_tp_to_sort ctx t =
+let rec smt_tp_to_sort (env : Dtencoding.z3_env) t =
+  let ctx = env.ctx in
   match t with
   (* | Smt_enum { enum_name; enum_elems } -> *)
   (*     get_z3_enum_type ctx (enum_name, enum_elems) *)
   | Smt_Uninterp name -> (
-      match Dtencoding.z3_data_type_get name with
+      match Dtencoding.z3_data_type_get env name with
       | Some dt -> dt.sort
+      | None when Hashtbl.mem Dtencoding.decl_registry name ->
+          _die_with [%here]
+            (spf
+               "registered datatype %s has no built sort in this ctx's \
+                datatype_map"
+               name)
       | None -> Sort.mk_uninterpreted_s ctx name)
   (* | Smt_Uninterp _ -> Integer.mk_sort ctx *)
   | Smt_Unit -> Enumeration.mk_sort_s ctx z3_unit_name [ z3_tt_name ]
@@ -82,7 +79,7 @@ let rec smt_tp_to_sort ctx t =
       let constructor_some =
         Datatype.mk_constructor_s ctx some_name (mk_recog ctx some_name)
           [ Symbol.mk_string ctx (spf "get_%s" some_name) ]
-          [ Some (smt_tp_to_sort ctx smtnt) ]
+          [ Some (smt_tp_to_sort env smtnt) ]
           [ 0 ]
       in
       Datatype.mk_sort_s ctx option_name [ constructor_none; constructor_some ]
@@ -91,7 +88,7 @@ let rec smt_tp_to_sort ctx t =
       let n = List.length l in
       let sym = Symbol.mk_string ctx tuple_name in
       let syms = List.init n (fun i -> tuple_field ctx tuple_name i) in
-      let l = List.map (smt_tp_to_sort ctx) l in
+      let l = List.map (smt_tp_to_sort env) l in
       Tuple.mk_sort ctx sym syms l
   | Smt_record fields ->
       let record_name = layout_smtty t in
@@ -101,94 +98,69 @@ let rec smt_tp_to_sort ctx t =
           (spf "_constr%s" record_name)
           (mk_recog ctx record_name)
           (List.map (fun x -> Symbol.mk_string ctx x.x) fields)
-          (List.map (fun x -> Some (smt_tp_to_sort ctx x.ty)) fields)
+          (List.map (fun x -> Some (smt_tp_to_sort env x.ty)) fields)
           (List.init (List.length fields) (fun i -> i))
       in
       Datatype.mk_sort_s ctx record_name [ constructor ]
 
 let int_to_z3 ctx i = mk_numeral_int ctx i (Integer.mk_sort ctx)
 let bool_to_z3 ctx b = if b then mk_true ctx else mk_false ctx
-
-let float_to_z3 ctx float =
-  FloatingPoint.mk_numeral_f ctx float (smt_tp_to_sort ctx Smt_Float64)
-
-let char_to_z3 ctx char = Seq.mk_char ctx (Char.code char)
 let str_to_z3 ctx str = Seq.mk_string ctx str
 
-open Z3decls
+(* Z3 hash-conses sorts within a ctx: primitives, datatypes (resolved through
+   [env.datatype_map]), tuples, and records all intern by name+structure, so
+   rebuilding a sort on every call returns the same Z3 sort and costs only the FFI
+   to reconstruct it. We keep no memo table — a non-ctx-keyed one would hand a
+   second ctx the first ctx's sort and raise a cross-ctx mismatch. The [z3_env]
+   carries that ctx's [datatype_map], so a transient ctx (the portfolio's functional
+   entry) gets its own registry without disturbing the prover's. *)
+let tp_to_sort env t = smt_tp_to_sort env (to_smtty t)
 
-let add_func env name fd =
-  if Hashtbl.mem env.funcs name then
-    _die_with [%here] (spf "duplicate function symbol %s" name);
-  Hashtbl.add env.funcs name fd
-
-(* A self-referencing field gets [None]: sort 0 of the declaration being built. *)
-let build_constructor ctx decl ctor =
-  let field_sort f =
-    match f.ftype with
-    | Ty_constructor (name, []) when name = decl.dt_name -> None
-    | ty -> Some (smt_tp_to_sort ctx (to_smtty ty))
+(* A registered datatype that hasn't been built into the env's [datatype_map]
+   must crash rather than fall through to an uninterpreted sort. *)
+let%test "tp_to_sort dies on a registered datatype missing from datatype_map" =
+  let saved = Hashtbl.copy Dtencoding.decl_registry in
+  Hashtbl.reset Dtencoding.decl_registry;
+  Dtencoding.register_decl
+    { dt_name = "boxty"; ctors = [ { cname = "box"; fields = [] } ] };
+  let ctx = Z3.mk_context [] in
+  let env : Dtencoding.z3_env =
+    { ctx; datatype_map = Hashtbl.create 1; rec_func_map = Hashtbl.create 1 }
   in
-  Datatype.mk_constructor_s ctx ctor.cname
-    (Symbol.mk_string ctx (recognizer_name ctor.cname))
-    (List.map (fun f -> Symbol.mk_string ctx f.fname) ctor.fields)
-    (List.map field_sort ctor.fields)
-    (List.map (fun _ -> 0) ctor.fields)
-
-let build_datatype ctx env decl =
-  let sort =
-    Datatype.mk_sort_s ctx decl.dt_name
-      (List.map (build_constructor ctx decl) decl.ctors)
+  let raised =
+    try
+      ignore (tp_to_sort env (Ty_constructor ("boxty", [])));
+      false
+    with Failure _ -> true
   in
-  Hashtbl.add env.datatypes decl.dt_name sort;
-  List.iter2
-    (fun c fd -> add_func env c.cname fd)
-    decl.ctors
-    (Datatype.get_constructors sort);
-  List.iter2
-    (fun c fd -> add_func env (recognizer_name c.cname) fd)
-    decl.ctors
-    (Datatype.get_recognizers sort);
-  List.iter2
-    (fun c fds -> List.iter2 (fun f fd -> add_func env f.fname fd) c.fields fds)
-    decl.ctors
-    (Datatype.get_accessors sort)
+  Hashtbl.reset Dtencoding.decl_registry;
+  Hashtbl.iter (Hashtbl.replace Dtencoding.decl_registry) saved;
+  raised
 
-(* Builds every datatype registered so far, joining [envs] first so a field
-   can name an earlier one. *)
-let env_of ctx =
-  match List.assq_opt ctx !envs with
-  | Some env -> env
-  | None ->
-      let env =
-        {
-          sorts = Hashtbl.create 16;
-          datatypes = Hashtbl.create 16;
-          funcs = Hashtbl.create 16;
-        }
-      in
-      envs := (ctx, env) :: !envs;
-      List.iter (build_datatype ctx env) (registered_decls ());
-      env
+let z3func (env : Dtencoding.z3_env) funcname inptps outtp =
+  (* let () = Printf.printf "[%s]funcname: %s\n" __FILE__ funcname in *)
+  FuncDecl.mk_func_decl env.ctx
+    (Symbol.mk_string env.ctx funcname)
+    (List.map (tp_to_sort env) inptps)
+    (tp_to_sort env outtp)
 
-let func_lookup ctx name = Hashtbl.find_opt (env_of ctx).funcs name
+(* let arrname_arr arrname = arrname ^ "_a" *)
+(* let arrname_length arrname = arrname ^ "_length" *)
 
-let tp_to_sort ctx ty =
-  let env = env_of ctx in
-  match Hashtbl.find_opt env.sorts ty with
-  | Some sort -> sort
-  | None ->
-      let sort = smt_tp_to_sort ctx (to_smtty ty) in
-      Hashtbl.add env.sorts ty sort;
-      sort
+(* let arrii_to_z3 ctx name = *)
+(*   Z3Array.mk_const_s ctx (arrname_arr name) (Integer.mk_sort ctx) *)
+(*     (Integer.mk_sort ctx) *)
 
-let z3func ctx funcname inptps outtp =
-  FuncDecl.mk_func_decl ctx
-    (Symbol.mk_string ctx funcname)
-    (List.map (tp_to_sort ctx) inptps)
-    (tp_to_sort ctx outtp)
+(* let array_head_ ctx (arrname, idx) = *)
+(*   let a_length = Integer.mk_const_s ctx (arrname_length arrname) in *)
+(*   [ mk_lt ctx idx a_length; mk_le ctx (int_to_z3 ctx 0) idx ] *)
 
-let tpedvar_to_z3 ctx (tp, name) = Expr.mk_const_s ctx name @@ tp_to_sort ctx tp
+(* let array_head ctx (arrname, idxname) = *)
+(*   let idx = Integer.mk_const_s ctx idxname in *)
+(*   array_head_ ctx (arrname, idx) *)
+
+let tpedvar_to_z3 (env : Dtencoding.z3_env) (tp, name) =
+  Expr.mk_const_s env.ctx name @@ tp_to_sort env tp
 
 let make_forall ctx qv body =
   if List.length qv = 0 then body

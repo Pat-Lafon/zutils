@@ -83,31 +83,18 @@ let psetting =
     layout_mp = (fun x -> x);
   }
 
-let rec rocq_layout_ty = function
-  | Nt.Ty_constructor (name, _) -> (
-      match name with
-      | "bool" -> "bool"
-      | "int" -> "Z"
-      | "unit" -> "unit"
-      | _ -> name)
-  | Nt.Ty_tuple tys -> String.concat " * " (List.map rocq_layout_ty tys)
-  | ty ->
-      _die_with [%here]
-        (spf "rocq_layout_ty: unsupported type '%s'" (Nt.layout ty))
-
-(* Rocq needs the binder's type — [forall (x : Z), ...] — and spells disequality
-   [<>]. *)
-let rocqsetting =
+let rawsetting =
   {
-    sym_true = "True";
-    sym_false = "False";
-    sym_and = " /\\ ";
-    sym_or = " \\/ ";
-    sym_not = "~";
-    sym_implies = "->";
-    sym_iff = "<->";
-    sym_forall = "forall ";
-    sym_exists = "exists ";
-    layout_typedid = (fun x -> spf "(%s : %s)" x.x (rocq_layout_ty x.ty));
-    layout_mp = (function "==" -> "=" | "!=" -> "<>" | x -> x);
+    sym_true = "true";
+    sym_false = "false";
+    sym_and = " && ";
+    sym_or = " || ";
+    sym_not = "not";
+    sym_implies = "=>";
+    sym_iff = "<=>";
+    sym_forall = "∀";
+    sym_exists = "∃";
+    layout_typedid = (fun x -> x.x);
+    (* (fun x ->          Printf.spf "(%s:%s)" x.x (Ty.layout x.ty)); *)
+    layout_mp = (fun x -> x);
   }

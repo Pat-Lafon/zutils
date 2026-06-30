@@ -44,11 +44,10 @@ let rec fold_lit f acc (lit_e : 't lit) =
   let acc = f acc lit_e in
   match lit_e with
   | AC _ | AVar _ -> acc
-  | ATu l | AAppOp (_, l) -> List.fold_left (typed_fold_lit f) acc l
-  | AProj (t, _) | AField (t, _) -> typed_fold_lit f acc t
-  | ARecord l -> List.fold_left (fun acc (_, t) -> typed_fold_lit f acc t) acc l
-
-and typed_fold_lit f acc (lit_e : ('t, 't lit) typed) = fold_lit f acc lit_e.x
+  | ATu l | AAppOp (_, l) ->
+      List.fold_left (fun acc t -> fold_lit f acc t.x) acc l
+  | AProj (t, _) | AField (t, _) -> fold_lit f acc t.x
+  | ARecord l -> List.fold_left (fun acc (_, t) -> fold_lit f acc t.x) acc l
 
 let fv_lit (lit_e : 't lit) =
   List.rev
@@ -275,27 +274,15 @@ let rec map_prop (f : 't -> 's) (prop_e : 't prop) =
 and typed_map_prop (f : 't -> 's) (prop_e : ('t, 't prop) typed) =
   prop_e#=>f#->(map_prop f)
 
-let rec fold_prop f acc (prop_e : 't prop) =
+let rec fold_prop f acc prop_e =
   let acc = f acc prop_e in
   match prop_e with
   | Lit _ -> acc
-  | Implies (e1, e2) ->
-      let acc = fold_prop f acc e1 in
-      fold_prop f acc e2
-  | Ite (e1, e2, e3) ->
-      let acc = fold_prop f acc e1 in
-      let acc = fold_prop f acc e2 in
-      fold_prop f acc e3
-  | Not e -> fold_prop f acc e
-  | And es -> List.fold_left (fold_prop f) acc es
-  | Or es -> List.fold_left (fold_prop f) acc es
-  | Iff (e1, e2) ->
-      let acc = fold_prop f acc e1 in
-      fold_prop f acc e2
-  | Forall { body; _ } -> fold_prop f acc body
-  | Exists { body; _ } -> fold_prop f acc body
-
-and typed_fold_prop f acc prop_e = fold_prop f acc prop_e.x
+  | Not p -> fold_prop f acc p
+  | Implies (a, b) | Iff (a, b) -> fold_prop f (fold_prop f acc a) b
+  | Ite (a, b, c) -> fold_prop f (fold_prop f (fold_prop f acc a) b) c
+  | And ps | Or ps -> List.fold_left (fold_prop f) acc ps
+  | Forall { body; _ } | Exists { body; _ } -> fold_prop f acc body
 
 let fv_prop_id e = fv_typed_id_to_id fv_prop e
 let typed_fv_prop_id e = fv_typed_id_to_id typed_fv_prop e
@@ -305,11 +292,6 @@ let subst_prop_instance x instance e =
 
 let typed_subst_prop_instance x instance e =
   subst_f_to_instance typed_subst_prop x instance e
-
-let has_quantifiers (prop_e : 't prop) =
-  fold_prop
-    (fun acc -> function Forall _ | Exists _ -> true | _ -> acc)
-    false prop_e
 
 (* force *)
 let prop_force_typed_lit_opt prop =
@@ -633,11 +615,11 @@ let fresh_name_prop =
     | Or es -> smart_or (List.map aux es)
     | Iff (e1, e2) -> Iff (aux e1, aux e2)
     | Forall { qv; body } ->
-        let qv' = qv#->Rename.unique_var in
+        let qv' = qv#->Rename.unique in
         let body = subst_prop_instance qv.x (AVar qv') body in
         Forall { qv = qv'; body = aux body }
     | Exists { qv; body } ->
-        let qv' = qv#->Rename.unique_var in
+        let qv' = qv#->Rename.unique in
         let body = subst_prop_instance qv.x (AVar qv') body in
         Exists { qv = qv'; body = aux body }
   in
