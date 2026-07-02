@@ -10,7 +10,9 @@ let _log = _log "z3encode"
 (* The datatype an [AAppOp] of type [ty] is looked up under: a constructor/accessor keys on
    the type it acts on (first arg), a nullary constructor on its return type. *)
 let op_dt_key (ty : Nt.t) : string =
-  match Nt.destruct_arr_tp ty with t :: _, _ -> Nt.layout t | [], _ -> Nt.layout ty
+  match Nt.destruct_arr_tp ty with
+  | t :: _, _ -> Nt.layout t
+  | [], _ -> Nt.layout ty
 
 let rec typed_lit_to_z3 (env : Dtencoding.z3_env) lit =
   let ctx = env.ctx in

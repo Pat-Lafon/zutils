@@ -7,7 +7,6 @@
 type smt_result = SmtSat | SmtUnsat | Unknown of string option
 type entry = { label : string; query : string }
 
-
 (* z3 prints the reason as `(:reason-unknown "<text>")`; "" after sat/unsat. *)
 let parse_reason_unknown (lines : string list) : string option =
   List.find_map
@@ -65,7 +64,8 @@ let reap_killed (pids : int list) : unit =
 
 (* Raises [Failure] on any z3 misbehavior — [classify]'s own checks, plus a verdict
    from a process that did not exit cleanly. *)
-let classify_outcome ~stdout ~stderr ~(status : Unix.process_status) : smt_result =
+let classify_outcome ~stdout ~stderr ~(status : Unix.process_status) :
+    smt_result =
   match classify ~stdout ~stderr with
   | Unknown _ as t -> t
   | (SmtSat | SmtUnsat) as r -> (
@@ -88,7 +88,9 @@ let spawn_one (devnull : Unix.file_descr) (entry : entry) : solver =
   let out_fd = Unix.openfile stdout_tmp [ Unix.O_WRONLY; Unix.O_TRUNC ] 0o600 in
   let err_fd = Unix.openfile stderr_tmp [ Unix.O_WRONLY; Unix.O_TRUNC ] 0o600 in
   match
-    Unix.create_process "z3" [| "z3"; "-smt2"; query_tmp |] devnull out_fd err_fd
+    Unix.create_process "z3"
+      [| "z3"; "-smt2"; query_tmp |]
+      devnull out_fd err_fd
   with
   | pid ->
       Unix.close out_fd;

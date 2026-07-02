@@ -82,4 +82,3 @@ let psetting =
     (* (fun x ->          Printf.spf "(%s:%s)" x.x (Ty.layout x.ty)); *)
     layout_mp = (fun x -> x);
   }
-

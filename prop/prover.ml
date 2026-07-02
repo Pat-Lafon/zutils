@@ -72,7 +72,8 @@ let dump_queries entries =
   List.iter
     (fun { Portfolio.label; query } ->
       let path =
-        Filename.concat (Filename.get_temp_dir_name ())
+        Filename.concat
+          (Filename.get_temp_dir_name ())
           (Printf.sprintf "zutils_query_%i_%s.smt2" !query_counter label)
       in
       Out_channel.with_open_text path (fun oc -> output_string oc query);
@@ -185,4 +186,3 @@ let coercion_hint = function
       "raise the prover timeout if this verdict is decision-relevant"
   | Some r -> Printf.sprintf "z3 reason-unknown: %s" r
   | None -> "raise rlimit if this verdict is decision-relevant"
-
