@@ -7,14 +7,6 @@ open Constencoding
 
 let _log = _log "z3encode"
 
-(* The fixed-name [AAppOp] arms below that get a real (constrained) Z3 encoding rather than the
-   uninterpreted [z3func] fallback. Keep in sync with those arms. *)
-let interpreted_lit_op = function
-  | "==" | "!=" | "<=" | ">=" | "<" | ">" | "+" | "-" | "mod" | "*" | "/" | "^"
-  | "char_is_digit" | "char_to_int" | "char_le" | "None" | "Some" ->
-      true
-  | _ -> false
-
 (* The datatype an [AAppOp] of type [ty] is looked up under: a constructor/accessor keys on
    the type it acts on (first arg), a nullary constructor on its return type. *)
 let op_dt_key (ty : Nt.t) : string =

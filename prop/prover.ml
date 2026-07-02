@@ -62,8 +62,7 @@ let update_axioms axioms =
   let p = get_prover () in
   _prover := Some { p with ax_sys = Axiom.add_laxioms p.ax_sys axioms }
 
-let serialize_query (env : Dtencoding.z3_env) prop : string =
-  let query = Propencoding.to_z3 env prop in
+let serialize_expr (env : Dtencoding.z3_env) (query : Expr.expr) : string =
   let solver = mk_solver env.ctx None in
   Solver.add solver [ query ];
   Solver.to_string solver

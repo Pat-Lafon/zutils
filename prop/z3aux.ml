@@ -172,6 +172,18 @@ let z3func (env : Dtencoding.z3_env) funcname inptps outtp =
     (List.map (tp_to_sort env) inptps)
     (tp_to_sort env outtp)
 
+(* A [define-fun-rec] measure reports [OP_RECURSIVE] and built-in/datatype ops carry their
+   own kind, so only [z3func]'s fallback matches [OP_UNINTERPRETED]. *)
+let rec has_uninterpreted_app (e : expr) : bool =
+  match AST.get_ast_kind (ast_of_expr e) with
+  | APP_AST ->
+      FuncDecl.get_decl_kind (get_func_decl e) = OP_UNINTERPRETED
+      || List.exists has_uninterpreted_app (get_args e)
+  | QUANTIFIER_AST ->
+      has_uninterpreted_app
+        (Quantifier.get_body (Quantifier.quantifier_of_expr e))
+  | _ -> false
+
 (* let arrname_arr arrname = arrname ^ "_a" *)
 (* let arrname_length arrname = arrname ^ "_length" *)
 
