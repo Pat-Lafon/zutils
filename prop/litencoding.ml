@@ -15,6 +15,11 @@ let interpreted_lit_op = function
       true
   | _ -> false
 
+(* The datatype an [AAppOp] of type [ty] is looked up under: a constructor/accessor keys on
+   the type it acts on (first arg), a nullary constructor on its return type. *)
+let op_dt_key (ty : Nt.t) : string =
+  match Nt.destruct_arr_tp ty with t :: _, _ -> Nt.layout t | [], _ -> Nt.layout ty
+
 let rec typed_lit_to_z3 (env : Dtencoding.z3_env) lit =
   let ctx = env.ctx in
   let () =
@@ -91,11 +96,7 @@ let rec typed_lit_to_z3 (env : Dtencoding.z3_env) lit =
       | "char_to_int", [ a ] -> Seq.mk_char_to_int ctx a
       | "char_le", [ a; b ] -> Seq.mk_char_le ctx a b
       | opname, args ->
-          let dt_key =
-            match Nt.destruct_arr_tp op.ty with
-            | t :: _, _ -> Nt.layout t
-            | [], _ -> Nt.layout op.ty (* nullary ctor: keyed by return type *)
-          in
+          let dt_key = op_dt_key op.ty in
           let func =
             match Dtencoding.z3_data_type_func_lookup env dt_key opname with
             | Some f -> f
