@@ -53,9 +53,9 @@ let register_decl (d : datatype_decl) : unit =
   then
     failwith
       (Printf.sprintf
-         "datatype %s has constructors sharing a field name; \
-          Recdef_encoding.bind_args projects by bare field name and would \
-          route through the wrong constructor"
+         "datatype %s has constructors sharing a field name; the functional \
+          encoding projects match arms by bare field name and would route \
+          through the wrong constructor"
          d.dt_name);
   let cnames = List.map (fun c -> c.cname) d.ctors in
   if List.length cnames <> List.length (List.sort_uniq String.compare cnames)
