@@ -92,48 +92,39 @@ let run_z3_binary ~extra_bodies solver : smt_result * string option =
     | Some r -> Printf.sprintf "(set-option :rlimit %d)\n" r
     | None -> ""
   in
-  let wrap ?(dt_eager = false) ?(set_logic = false) ~auto_config body =
-    let ac = if auto_config then "" else "(set-option :auto-config false)\n" in
+  let wrap ?(dt_eager = false) ?(mbqi_only = false) body =
     let dt = if dt_eager then "(set-option :smt.dt_lazy_splits 0)\n" else "" in
-    let sl = if set_logic then "(set-logic ALL)\n" else "" in
+    let mq =
+      if mbqi_only then
+        "(set-option :smt.ematching false)\n(set-option :smt.mbqi true)\n"
+      else ""
+    in
     (* [(get-info :reason-unknown)] is appended unconditionally; after sat/unsat z3
        answers `(:reason-unknown "")`. *)
     Printf.sprintf
-      "%s%s%s(set-option :timeout %d)\n\
+      "%s%s(set-option :timeout %d)\n\
        %s%s\n\
        (check-sat)\n\
        (get-info :reason-unknown)\n"
-      ac sl dt timeout rlimit_opt body
+      dt mq timeout rlimit_opt body
   in
   let axiom_body = Solver.to_string solver in
-  let base_axiom_entries =
+  let entries =
     [
-      { Portfolio.label = "axiom"; query = wrap ~auto_config:true axiom_body };
-      {
-        Portfolio.label = "axiom_no-autoconfig";
-        query = wrap ~auto_config:false axiom_body;
-      };
+      { Portfolio.label = "axiom"; query = wrap axiom_body };
       {
         Portfolio.label = "axiom_dt-eager";
-        query = wrap ~auto_config:true ~dt_eager:true axiom_body;
+        query = wrap ~dt_eager:true axiom_body;
       };
-    ]
-  in
-  let datatype_heavy_entries =
-    [
       {
-        Portfolio.label = "axiom_dt-eager_set-logic";
-        query = wrap ~auto_config:true ~dt_eager:true ~set_logic:true axiom_body;
+        Portfolio.label = "axiom_mbqi-only";
+        query = wrap ~mbqi_only:true axiom_body;
       };
     ]
+    @ List.map
+        (fun body -> { Portfolio.label = "functional"; query = wrap body })
+        extra_bodies
   in
-  let func_entries =
-    List.map
-      (fun body ->
-        { Portfolio.label = "functional"; query = wrap ~auto_config:true body })
-      extra_bodies
-  in
-  let entries = base_axiom_entries @ datatype_heavy_entries @ func_entries in
   dump_queries entries;
   Portfolio.solve entries
 
@@ -155,9 +146,6 @@ let check_sat ~axioms ?(extra_bodies = []) prop =
     _log_queries @@ fun _ ->
     Pp.printf "@{<bold>QUERY:@}\n%s\n" (Expr.to_string query)
   in
-  (* Goal/Solver here only serialize the assertions for [run_z3_binary]; per-query
-     locals since nothing solves in-process. No logic is fixed ([None] to [mk_solver])
-     because [wrap] adds [(set-logic ALL)] to the one entry that needs it. *)
   let goal = mk_goal ctx true false false in
   Goal.add goal (z3_axioms @ [ query ]);
   let _ =
