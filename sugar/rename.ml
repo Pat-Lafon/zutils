@@ -1,10 +1,8 @@
 open SugarAux
 
+(* Source names use a single [split_char]; renamer-issued names carry a doubled
+   one ([tag_sep]), so the two never collide and [is_tagged] can tell them apart. *)
 let split_char = '_'
-
-(* [tag_sep] is a doubled separator, keeping generated names disjoint from
-   source names (which use single separators). [unique] re-tags by stripping any
-   prior tag first ([root_of]), so repeated renames stay bounded. *)
 let tag_sep = spf "%c%c" split_char split_char
 let counter = ref 0
 
@@ -30,8 +28,10 @@ let root_of name =
       else name
   | None -> name
 
-(* A name is renamer-issued iff it carries a [tag_sep] tag that [root_of] strips. *)
 let is_tagged name = root_of name <> name
+
+(* strip any existing tag before re-tagging, so [unique (unique x)] stays [x__n],
+   not [x__n__m] *)
 let unique name = spf "%s%s%i" (root_of name) tag_sep (gensym ())
 let dummy_var () = unique "dummyVar"
 let fresh_type_var () = unique "tv"
