@@ -34,9 +34,8 @@ let z3_data_type_func_lookup (env : z3_env) (dt_name : string) (f : string) :
   Option.bind (z3_data_type_get env dt_name) (fun dt ->
       z3_data_type_func_get dt f)
 
-(* OCaml-side declaration registry. Populated at config-load by walking
-   [data_type_decls.ml] items; consumed at Z3 ctx creation by
-   [register_all_for_ctx]. Decoupled so decls survive across Z3 ctx churn. *)
+(* Decls live here decoupled from any Z3 ctx so they survive ctx churn;
+   [register_all_for_ctx] consumes them to build each ctx's sorts. *)
 type field_spec = { fname : string; ftype : nt }
 type ctor_spec = { cname : string; fields : field_spec list }
 type datatype_decl = { dt_name : string; ctors : ctor_spec list }

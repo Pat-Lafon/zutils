@@ -41,7 +41,6 @@ let pred_extension ps =
       else ps)
     ps rules
 
-(* Type of the first quantified var whose type is the poly var, if any. *)
 let find_first_poly_type_from_axiom prop =
   let rec aux prop =
     match prop with
@@ -82,23 +81,17 @@ let gather_indicator_types query axioms =
   let relevant_preds =
     List.filter (fun x -> StrSet.mem x.x preds_in_aximos) typed_preds
   in
-  (* first parameter type of each relevant predicate, grouped by name; nullary
-     preds contribute nothing. *)
-  let first_params_by_name =
-    List.fold_left
-      (fun m p ->
-        let params, _ = Nt.destruct_arr_tp p.ty in
-        match params with
-        | [] -> m
-        | x :: _ ->
-            StrMap.update p.x
-              (fun prev -> Some (x :: Option.value ~default:[] prev))
-              m)
-      StrMap.empty relevant_preds
-  in
+  (* The concrete types to instantiate each polymorphic axiom at (below): the
+     first-argument type of every relevant predicate as it appears in the query.
+     Nullary preds contribute nothing. *)
   let indicator_types =
     List.slow_rm_dup Nt.equal_nt
-    @@ List.concat_map snd (StrMap.to_kv_list first_params_by_name)
+    @@ List.filter_map
+         (fun p ->
+           match Nt.destruct_arr_tp p.ty with
+           | x :: _, _ -> Some x
+           | [], _ -> None)
+         relevant_preds
   in
   let instantiate_axiom_by_ty ax ax_fst_ty ty =
     let tvars = Nt.gather_type_vars ty in
@@ -163,7 +156,7 @@ let gather_indicator_types query axioms =
 
 let emp = StrMap.empty
 
-(* Every loaded axiom as (name, prop), like [find_axioms] but unfiltered. *)
+(* Like [find_axioms] but unfiltered — every loaded axiom. *)
 let all_axioms asys =
   List.map (fun (name, { prop; _ }) -> (name, prop)) (StrMap.to_kv_list asys)
 

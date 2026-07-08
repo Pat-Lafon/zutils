@@ -135,13 +135,9 @@ let int_to_z3 ctx i = mk_numeral_int ctx i (Integer.mk_sort ctx)
 let bool_to_z3 ctx b = if b then mk_true ctx else mk_false ctx
 let str_to_z3 ctx str = Seq.mk_string ctx str
 
-(* Z3 hash-conses sorts within a ctx: primitives, datatypes (resolved through
-   [env.datatype_map]), tuples, and records all intern by name+structure, so
-   rebuilding a sort on every call returns the same Z3 sort and costs only the FFI
-   to reconstruct it. We keep no memo table — a non-ctx-keyed one would hand a
-   second ctx the first ctx's sort and raise a cross-ctx mismatch. The [z3_env]
-   carries that ctx's [datatype_map], so a transient ctx (the portfolio's functional
-   entry) gets its own registry without disturbing the prover's. *)
+(* No memo table: Z3 hash-conses sorts within a ctx, so rebuilding one on each call
+   returns the same sort for only the FFI cost. A non-ctx-keyed memo (the old one)
+   would hand a second ctx the first ctx's sort and raise a cross-ctx mismatch. *)
 let tp_to_sort env t = smt_tp_to_sort env (to_smtty t)
 
 (* A registered datatype that hasn't been built into the env's [datatype_map]

@@ -1,6 +1,6 @@
 (* Race N z3 subprocesses per query and take the first definite verdict. z3 emits
-   its few bytes of output just before exiting, so we [wait] for exits and read
-   the temp files rather than streaming. *)
+   its few bytes of output just before exiting, so we wait for each to exit and
+   read the temp files rather than streaming. *)
 
 (* [Unknown] carries z3's `:reason-unknown`, present only when the query appended
    [(get-info :reason-unknown)]; [None] when no reason line was emitted. *)
@@ -114,8 +114,8 @@ let solve (entries : entry list) : smt_result * string option =
       Fun.protect
         ~finally:(fun () ->
           (try Unix.close devnull with Unix.Unix_error _ -> ());
-          (* The loop drops each solver from [live] the instant [wait] reaps it, so
-             [live] holds only un-reaped pids. *)
+          (* The loop drops each solver from [live] the instant the poll reaps it,
+             so [live] holds only un-reaped pids. *)
           reap_killed (List.map (fun c -> c.pid) !live);
           List.iter
             (fun c ->
@@ -125,31 +125,44 @@ let solve (entries : entry list) : smt_result * string option =
             !live)
         (fun () ->
           List.iter (fun e -> live := spawn_one devnull e :: !live) entries;
-          (* [Unix.wait] reaps any child, but this single-threaded solve spawns only
-             its z3s, so the reaped pid is always in [live]; each self-exits on its
-             [:timeout], so the loop drains. *)
+          (* Poll only our own pids with [WNOHANG]; [Unix.wait ()] would reap — and
+             steal the status of — any child of the host process, not just our z3s.
+             Each z3 self-exits on its [:timeout], so some pid always finishes and
+             the loop drains. *)
           let rec loop reason =
             match !live with
             | [] -> (Unknown reason, None)
-            | _ -> (
-                let pid, status = Unix.wait () in
-                let c = List.find (fun c -> c.pid = pid) !live in
-                live := List.filter (fun c' -> c'.pid <> pid) !live;
-                let stdout = read_file c.stdout_tmp
-                and stderr = read_file c.stderr_tmp in
-                remove_tmp c.stdout_tmp;
-                remove_tmp c.stderr_tmp;
-                match classify_outcome ~stdout ~stderr ~status with
-                | exception Failure m ->
-                    log_retained ~label:c.label c.query_tmp;
-                    failwith
-                      (Printf.sprintf "Portfolio: z3 error (%s): %s" c.label m)
-                | (SmtSat | SmtUnsat) as r ->
-                    remove_tmp c.query_tmp;
-                    (r, Some c.label)
-                | Unknown r ->
-                    remove_tmp c.query_tmp;
-                    (* keep the first non-None reason; a later [unknown] may carry none *)
-                    loop (if reason = None then r else reason))
+            | cs -> (
+                let finished =
+                  List.find_map
+                    (fun c ->
+                      match Unix.waitpid [ Unix.WNOHANG ] c.pid with
+                      | 0, _ -> None
+                      | _, status -> Some (c, status))
+                    cs
+                in
+                match finished with
+                | None ->
+                    Unix.sleepf 0.005;
+                    loop reason
+                | Some (c, status) -> (
+                    live := List.filter (fun c' -> c'.pid <> c.pid) !live;
+                    let stdout = read_file c.stdout_tmp
+                    and stderr = read_file c.stderr_tmp in
+                    remove_tmp c.stdout_tmp;
+                    remove_tmp c.stderr_tmp;
+                    match classify_outcome ~stdout ~stderr ~status with
+                    | exception Failure m ->
+                        log_retained ~label:c.label c.query_tmp;
+                        failwith
+                          (Printf.sprintf "Portfolio: z3 error (%s): %s" c.label
+                             m)
+                    | (SmtSat | SmtUnsat) as r ->
+                        remove_tmp c.query_tmp;
+                        (r, Some c.label)
+                    | Unknown r ->
+                        remove_tmp c.query_tmp;
+                        (* keep the first non-None reason; a later [unknown] may carry none *)
+                        loop (if Option.is_none reason then r else reason)))
           in
           loop None)
