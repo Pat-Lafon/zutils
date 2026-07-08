@@ -1,7 +1,6 @@
-(* The [map] is the [rec_func_map] field of the caller's [Dtencoding.z3_env].
-   [lookup] returns the stored [func_decl] rather than recomputing it: re-deriving
-   an already-defined recursive function via Z3's [mk_rec_func_decl_s] segfaults Z3
-   in the real serialization flow — see auto-memory project_func_encoding_store_decl. *)
+(* Store func_decls rather than re-derive them: re-deriving an already-defined
+   recursive function via Z3's [mk_rec_func_decl_s] segfaults Z3 in the real
+   serialization flow. *)
 type rec_func_map = (string, Z3.FuncDecl.func_decl) Hashtbl.t
 
 let register_rec_func (map : rec_func_map) (name : string)
