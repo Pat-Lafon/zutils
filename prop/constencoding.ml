@@ -18,6 +18,7 @@ let constant_to_z3 (env : Dtencoding.z3_env) c =
     | B b -> bool_to_z3 ctx b
     | I i -> int_to_z3 ctx i
     | S s -> str_to_z3 ctx s
-    | C _ | F _ -> _die_with [%here] "char/float constants are not supported"
+    | C c -> char_to_z3 ctx c
+    | F f -> float_to_z3 env f
   in
   aux c
