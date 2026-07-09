@@ -156,7 +156,6 @@ let gather_indicator_types query axioms =
 
 let emp = StrMap.empty
 
-(* Like [find_axioms] but unfiltered — every loaded axiom. *)
 let all_axioms asys =
   List.map (fun (name, { prop; _ }) -> (name, prop)) (StrMap.to_kv_list asys)
 

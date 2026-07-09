@@ -62,8 +62,7 @@ let reap_killed (pids : int list) : unit =
       with Unix.Unix_error (Unix.ECHILD, _, _) -> ())
     pids
 
-(* Raises [Failure] on any z3 misbehavior — [classify]'s own checks, plus a verdict
-   from a process that did not exit cleanly. *)
+(* On top of [classify], reject a sat/unsat verdict from a process that didn't exit cleanly. *)
 let classify_outcome ~stdout ~stderr ~(status : Unix.process_status) :
     smt_result =
   match classify ~stdout ~stderr with

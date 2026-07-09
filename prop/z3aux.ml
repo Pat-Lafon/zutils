@@ -134,6 +134,10 @@ let rec smt_tp_to_sort (env : Dtencoding.z3_env) t =
 let int_to_z3 ctx i = mk_numeral_int ctx i (Integer.mk_sort ctx)
 let bool_to_z3 ctx b = if b then mk_true ctx else mk_false ctx
 let str_to_z3 ctx str = Seq.mk_string ctx str
+let char_to_z3 ctx char = Seq.mk_char ctx (Char.code char)
+
+let float_to_z3 (env : Dtencoding.z3_env) float =
+  FloatingPoint.mk_numeral_f env.ctx float (smt_tp_to_sort env Smt_Float64)
 
 (* No memo table: Z3 hash-conses sorts within a ctx, so rebuilding one on each call
    returns the same sort for only the FFI cost. A non-ctx-keyed memo (the old one)
