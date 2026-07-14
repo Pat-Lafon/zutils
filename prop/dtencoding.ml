@@ -76,6 +76,21 @@ let is_dt_accessor (opname : string) : bool =
            decl.ctors)
     decl_registry false
 
+(* [extract_z3_data_type]/[register_all_for_ctx] name each recognizer [is_ ^ cname];
+   this inverts that for a registered constructor, so callers read the recognizer's
+   ctor off the op name without re-encoding the prefix. *)
+let recognizer_ctor (opname : string) : string option =
+  if String.length opname > 3 && String.equal (String.sub opname 0 3) "is_" then
+    let cname = String.sub opname 3 (String.length opname - 3) in
+    if
+      Hashtbl.fold
+        (fun _ decl acc ->
+          acc || List.exists (fun ctor -> String.equal ctor.cname cname) decl.ctors)
+        decl_registry false
+    then Some cname
+    else None
+  else None
+
 (* Edges for [topo_sort_decls]: the *other* registered datatypes [d]'s fields
    reference. *)
 let external_dt_refs (d : datatype_decl) : string list =
