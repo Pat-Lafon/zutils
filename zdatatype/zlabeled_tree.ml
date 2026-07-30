@@ -6,7 +6,6 @@ module LabeledTree = struct
   [@@deriving sexp]
 
   let spf = Printf.sprintf
-
   let rank = function Leaf -> 0 | Node (r, _, _, _) -> r
 
   let makeT x a b =

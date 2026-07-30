@@ -1,9 +1,7 @@
 open Sexplib.Std
 
 type elem = int [@@deriving sexp]
-
 type tree = Node of int * elem * elem list * tree list [@@deriving sexp]
-
 type t = tree list [@@deriving sexp]
 
 exception Empty
@@ -11,9 +9,7 @@ exception Empty
 open Zlist
 
 let is_single_tree = function Node (_, _, _, t) -> List.length t == 0
-
 let deep = List.length
-
 let deep_tree = function Node (_, _, _, l) -> 1 + deep l
 
 let rec mem x = function
@@ -129,13 +125,9 @@ let compare t1 t2 =
   aux t1 t2
 
 let eq t1 t2 = compare t1 t2 == 0
-
 let empty = []
-
 let is_empty ts = ts = []
-
 let rank (Node (r, _, _, _)) = r
-
 let root (Node (_, x, _, _)) = x
 
 let link (Node (r, x1, xs1, c1) as t1) (Node (_, x2, xs2, c2) as t2) =
@@ -253,9 +245,7 @@ let min_opt t =
     None t
 
 let t_head = function Node (r, x, _, _) -> (r, x)
-
 let t_head_l = function Node (r, x, xs, _) -> (r, x, xs)
-
 let t_head_update t x = match t with Node (r, _, xs, l) -> Node (r, x, xs, l)
 
 let t_head_l_update t x l =

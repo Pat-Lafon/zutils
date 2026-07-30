@@ -30,10 +30,8 @@ module F (P : Predictable) = struct
     | F -> "⊥"
     | Node (feature, l, r) -> spf "[%i](%s,%s)" feature (layout l) (layout r)
 
-  (** prune out unreachable path in the DT.
-      we will simplify Node(id, F, F) as F
-      we don't simplify Node(id, T, T) as T, which lose information
-  *)
+  (** prune out unreachable path in the DT. we will simplify Node(id, F, F) as F
+      we don't simplify Node(id, T, T) as T, which lose information *)
   let refine_dt_under_prop (sat_solver : prop -> bool) prop (features, dt) =
     let counter = ref 0 in
     let sat_solver prop =
@@ -74,7 +72,7 @@ module F (P : Predictable) = struct
     List.iter (fun (lit, b) -> Hashtbl.add tab lit b) l;
     tab
 
-  (** Convert dt into reachable paths.  *)
+  (** Convert dt into reachable paths. *)
   let dt_to_paths (features, dt) =
     let rec aux prefix dt =
       match dt with
@@ -93,7 +91,7 @@ module F (P : Predictable) = struct
     @@ Seq.mapi (fun id lit -> (lit, id))
     @@ Array.to_seq features
 
-  (** Remove unreachable paths by given paths  *)
+  (** Remove unreachable paths by given paths *)
   let refine_dt_from_tab features (paths : ('a, bool) Hashtbl.t list) dt =
     let rec aux paths dt =
       if 0 == List.length paths then F
@@ -228,9 +226,8 @@ module F (P : Predictable) = struct
     in
     aux dt
 
-  (** The input is a hashtable, which maps bool list into label;
-      by default, all bool list are labeled as false (baised as false);
-      The output is a dt. *)
+  (** The input is a hashtable, which maps bool list into label; by default, all
+      bool list are labeled as false (biased as false); The output is a dt. *)
   let biased_classify (len : int) (htab : (bool list, bool) Hashtbl.t) =
     let samples =
       Array.init (pow 2 len) (fun n ->

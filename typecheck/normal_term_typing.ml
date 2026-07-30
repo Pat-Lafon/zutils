@@ -23,21 +23,21 @@ and bi_typed_term_check (ctx : t ctx) (x : (t option, t option raw_term) typed)
 and bi_term_check (ctx : t ctx) (x : t option raw_term) (ty : t) :
     (t, t raw_term) typed =
   match (x, ty) with
-  | Err, _ -> Err #: ty
+  | Err, _ -> Err#:ty
   | Const _, _ | Var _, _ ->
       let x = bi_term_infer ctx x in
-      x.x #: (Nt._type_unify [%here] x.ty ty)
+      x.x#:(Nt._type_unify [%here] x.ty ty)
   | Tu es, Ty_tuple tys ->
       let estys = _safe_combine [%here] es tys in
       let es = List.map (fun (e, ty) -> bi_typed_term_check ctx e ty) estys in
-      (Tu es) #: ty
+      (Tu es)#:ty
   | Lam { lamarg; lambody }, Ty_arrow (t1, _) ->
       let lamarg = bi_typed_id_check ctx lamarg t1 in
       let ty = Nt._type_unify [%here] (Ty_arrow (lamarg.ty, Nt.Ty_any)) ty in
       let lambody =
         bi_typed_term_check (add_to_right ctx lamarg) lambody (Nt.get_retty ty)
       in
-      (Lam { lamarg; lambody }) #: ty
+      (Lam { lamarg; lambody })#:ty
   | AppOp (op, args), ty ->
       let op' = bi_typed_op_infer ctx op in
       let args' = List.map (bi_typed_term_infer ctx) args in
@@ -51,7 +51,7 @@ and bi_term_check (ctx : t ctx) (x : t option raw_term) (ty : t) :
         @@ List.combine args argsty
       in
       let op = bi_typed_op_check ctx op fty in
-      (AppOp (op, args)) #: ty
+      (AppOp (op, args))#:ty
   | App (f, args), ty ->
       let f' = bi_typed_term_infer ctx f in
       let args' = List.map (bi_typed_term_infer ctx) args in
@@ -66,7 +66,7 @@ and bi_term_check (ctx : t ctx) (x : t option raw_term) (ty : t) :
         @@ List.combine args argsty
       in
       let f = bi_typed_term_check ctx f fty in
-      (App (f, args)) #: ty
+      (App (f, args))#:ty
   | Let { if_rec; rhs; lhs; letbody }, ty ->
       let lhs = List.map (__force_typed [%here]) lhs in
       let rhsty = Nt.Ty_tuple (List.map _get_ty lhs) in
@@ -78,12 +78,12 @@ and bi_term_check (ctx : t ctx) (x : t option raw_term) (ty : t) :
         else ctx'
       in
       let letbody = bi_typed_term_check ctx' letbody ty in
-      (Let { if_rec; rhs; lhs; letbody }) #: ty
+      (Let { if_rec; rhs; lhs; letbody })#:ty
   | Ite (e1, e2, e3), _ ->
       let e1 = bi_typed_term_check ctx e1 Ty_bool in
       let e2 = bi_typed_term_check ctx e2 ty in
       let e3 = bi_typed_term_check ctx e3 ty in
-      (Ite (e1, e2, e3)) #: ty
+      (Ite (e1, e2, e3))#:ty
   | Match { match_cases = []; _ }, _ ->
       _failatwith [%here] "bi_term_infer: pattern matching branch is empty"
   | Match { matched; match_cases }, _ ->
@@ -99,7 +99,7 @@ and bi_term_check (ctx : t ctx) (x : t option raw_term) (ty : t) :
             in
             let argsty, _ = Nt.destruct_arr_tp constructor.ty in
             let args =
-              List.map (fun (x, ty) -> x.x #: ty)
+              List.map (fun (x, ty) -> x.x#:ty)
               @@ _safe_combine [%here] args argsty
             in
             let ctx' = add_to_rights ctx args in
@@ -107,7 +107,7 @@ and bi_term_check (ctx : t ctx) (x : t option raw_term) (ty : t) :
             Matchcase { constructor; args; exp }
       in
       let match_cases = List.map handle_case match_cases in
-      (Match { matched; match_cases }) #: ty
+      (Match { matched; match_cases })#:ty
   | e, ty ->
       _failatwith [%here]
         (spf "bi_term_check: inconsistent term (%s) and type (%s)"
@@ -120,20 +120,20 @@ and bi_term_infer (ctx : t ctx) (x : t option raw_term) : (t, t raw_term) typed
   | Err ->
       failwith
         "Cannot infer the type of the exception, should provide the return type"
-  | Const c -> (Const c) #: (Normal_constant_typing.infer_constant c)
+  | Const c -> (Const c)#:(Normal_constant_typing.infer_constant c)
   | Var id ->
       (* let _ = Printf.printf "id: %s\n" id.x in *)
       let id = bi_typed_id_infer ctx id in
-      (Var id) #: id.ty
+      (Var id)#:id.ty
   | Tu es ->
       let es = List.map (bi_typed_term_infer ctx) es in
       let ty = Nt.Ty_tuple (List.map _get_ty es) in
-      (Tu es) #: ty
+      (Tu es)#:ty
   | Lam { lamarg; lambody } ->
       let lamarg = __force_typed [%here] lamarg in
       let lambody = bi_typed_term_infer (add_to_right ctx lamarg) lambody in
       let ty = Nt.construct_arr_tp ([ lamarg.ty ], lambody.ty) in
-      (Lam { lamarg; lambody }) #: ty
+      (Lam { lamarg; lambody })#:ty
   | AppOp (op, args) ->
       let args = List.map (bi_typed_term_infer ctx) args in
       let op =
@@ -141,7 +141,7 @@ and bi_term_infer (ctx : t ctx) (x : t option raw_term) : (t, t raw_term) typed
           (Nt.construct_arr_tp (List.map _get_ty args, Nt.Ty_any))
       in
       let _, ty = Nt.destruct_arr_tp op.ty in
-      (AppOp (op, args)) #: ty
+      (AppOp (op, args))#:ty
   | App (f, args) ->
       let f = bi_typed_term_infer ctx f in
       let argsty, ty = Nt.destruct_arr_tp f.ty in
@@ -149,7 +149,7 @@ and bi_term_infer (ctx : t ctx) (x : t option raw_term) : (t, t raw_term) typed
         List.map (fun (x, ty) -> bi_typed_term_check ctx x ty)
         @@ _safe_combine [%here] args argsty
       in
-      (App (f, args)) #: ty
+      (App (f, args))#:ty
   | Let { if_rec = true; _ } ->
       _failatwith [%here] "cannot infer ret type of recursive function"
   | Let { if_rec; rhs; lhs; letbody } ->
@@ -163,12 +163,12 @@ and bi_term_infer (ctx : t ctx) (x : t option raw_term) : (t, t raw_term) typed
         else ctx'
       in
       let letbody = bi_typed_term_infer ctx' letbody in
-      (Let { if_rec; rhs; lhs; letbody }) #: letbody.ty
+      (Let { if_rec; rhs; lhs; letbody })#:letbody.ty
   | Ite (e1, e2, e3) ->
       let e1 = bi_typed_term_check ctx e1 Ty_bool in
       let e2 = bi_typed_term_infer ctx e2 in
       let e3 = bi_typed_term_check ctx e3 e2.ty in
-      (Ite (e1, e2, e3)) #: e2.ty
+      (Ite (e1, e2, e3))#:e2.ty
   | Match { matched; match_cases } ->
       let matched = bi_typed_term_infer ctx matched in
       let handle_case = function
@@ -182,7 +182,7 @@ and bi_term_infer (ctx : t ctx) (x : t option raw_term) : (t, t raw_term) typed
             in
             let argsty, _ = Nt.destruct_arr_tp constructor.ty in
             let args =
-              List.map (fun (x, ty) -> x.x #: ty)
+              List.map (fun (x, ty) -> x.x#:ty)
               @@ _safe_combine [%here] args argsty
             in
             let ctx' = add_to_rights ctx args in
@@ -206,7 +206,7 @@ and bi_term_infer (ctx : t ctx) (x : t option raw_term) : (t, t raw_term) typed
               _failatwith [%here]
                 "bi_term_infer: pattern matching branchs have different types"
       in
-      (Match { matched; match_cases }) #: ty
+      (Match { matched; match_cases })#:ty
 
 let typed_term_infer = bi_typed_term_infer
 let typed_term_check = bi_typed_term_check

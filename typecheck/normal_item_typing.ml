@@ -4,7 +4,7 @@ open Normal_regex_typing
 type t = Nt.t
 
 let constructor_declaration_mk_ (retty, { constr_name; argsty }) =
-  constr_name #: (Nt.construct_arr_tp (argsty, retty))
+  constr_name#:(Nt.construct_arr_tp (argsty, retty))
 
 (* NOTE: the whole spec items are first-order *)
 let item_check (ctx : spec_tyctx) (e : t item) : t item =
@@ -15,7 +15,7 @@ let item_check (ctx : spec_tyctx) (e : t item) : t item =
   | MValDecl x -> MValDecl x
   | MRegex { name; automata } ->
       let automata = bi_symbolic_regex_check ctx automata in
-      let name = name.x #: automata.ty in
+      let name = name.x#:automata.ty in
       MRegex { name; automata = automata.x }
   | MClient
       { client_name; event_scope; axioms; type_configs; violation; step_bound }
