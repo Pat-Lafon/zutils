@@ -5,6 +5,10 @@ open Sugar
 open Syntax
 open ZUtilsConfig
 
+let _log_queries = _log "queries"
+let _log_dump_smt = _log "dump_smt"
+let _log_stat = _log "stat"
+
 (* Constructors re-exported so callers use [Prover.SmtUnsat], not [Portfolio.*]. *)
 type smt_result = Portfolio.smt_result =
   | SmtSat

@@ -85,7 +85,8 @@ let recognizer_ctor (opname : string) : string option =
     if
       Hashtbl.fold
         (fun _ decl acc ->
-          acc || List.exists (fun ctor -> String.equal ctor.cname cname) decl.ctors)
+          acc
+          || List.exists (fun ctor -> String.equal ctor.cname cname) decl.ctors)
         decl_registry false
     then Some cname
     else None

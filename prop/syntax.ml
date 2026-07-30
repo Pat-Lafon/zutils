@@ -44,10 +44,11 @@ let rec fold_lit f acc (lit_e : 't lit) =
   let acc = f acc lit_e in
   match lit_e with
   | AC _ | AVar _ -> acc
-  | ATu l | AAppOp (_, l) ->
-      List.fold_left (fun acc t -> fold_lit f acc t.x) acc l
-  | AProj (t, _) | AField (t, _) -> fold_lit f acc t.x
-  | ARecord l -> List.fold_left (fun acc (_, t) -> fold_lit f acc t.x) acc l
+  | ATu l | AAppOp (_, l) -> List.fold_left (typed_fold_lit f) acc l
+  | AProj (t, _) | AField (t, _) -> typed_fold_lit f acc t
+  | ARecord l -> List.fold_left (fun acc (_, t) -> typed_fold_lit f acc t) acc l
+
+and typed_fold_lit f acc (lit_e : ('t, 't lit) typed) = fold_lit f acc lit_e.x
 
 let fv_lit (lit_e : 't lit) =
   List.rev
@@ -273,16 +274,6 @@ let rec map_prop (f : 't -> 's) (prop_e : 't prop) =
 
 and typed_map_prop (f : 't -> 's) (prop_e : ('t, 't prop) typed) =
   prop_e#=>f#->(map_prop f)
-
-let rec fold_prop f acc prop_e =
-  let acc = f acc prop_e in
-  match prop_e with
-  | Lit _ -> acc
-  | Not p -> fold_prop f acc p
-  | Implies (a, b) | Iff (a, b) -> fold_prop f (fold_prop f acc a) b
-  | Ite (a, b, c) -> fold_prop f (fold_prop f (fold_prop f acc a) b) c
-  | And ps | Or ps -> List.fold_left (fold_prop f) acc ps
-  | Forall { body; _ } | Exists { body; _ } -> fold_prop f acc body
 
 let fv_prop_id e = fv_typed_id_to_id fv_prop e
 let typed_fv_prop_id e = fv_typed_id_to_id typed_fv_prop e
