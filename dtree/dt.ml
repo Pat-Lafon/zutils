@@ -227,7 +227,7 @@ module F (P : Predictable) = struct
     aux dt
 
   (** The input is a hashtable, which maps bool list into label; by default, all
-      bool list are labeled as false (baised as false); The output is a dt. *)
+      bool list are labeled as false (biased as false); The output is a dt. *)
   let biased_classify (len : int) (htab : (bool list, bool) Hashtbl.t) =
     let samples =
       Array.init (pow 2 len) (fun n ->

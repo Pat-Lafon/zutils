@@ -5,6 +5,8 @@ open Sugar
 open ZUtilsConfig
 open Zdatatype
 
+let _log_queries = _log "queries"
+
 let unique_quantifiers prop =
   let rec aux prop =
     match prop with
