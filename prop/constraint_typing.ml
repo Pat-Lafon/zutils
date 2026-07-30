@@ -78,7 +78,7 @@ let rec constraint_lit_type_infer (ctx : t ctx) (bc : BC.bc) (lit : t lit) =
                            (List.map (fun (fd, lit) -> fd#:lit.ty) args)) )
   | AField (y, n) ->
       let cs, y = constraint_lit_type_check ctx bc y in
-      (cs, (AField (y, n))#:(Nt.get_feild [%here] y.ty n))
+      (cs, (AField (y, n))#:(Nt.get_field [%here] y.ty n))
   | AAppOp (mp, args) ->
       let bc, mp = constraint_id_type_check ctx bc mp in
       let bc, args = constraint_lits_type_check ctx bc args in

@@ -37,7 +37,7 @@ let rec typed_lit_to_z3 ctx lit =
       let accessors =
         List.nth (Datatype.get_accessors (tp_to_sort ctx lit.ty)) 0
       in
-      let idx = Nt.get_feild_idx [%here] lit.ty n in
+      let idx = Nt.get_field_idx [%here] lit.ty n in
       Z3.FuncDecl.apply (List.nth accessors idx) [ typed_lit_to_z3 ctx lit ]
   | AC c -> constant_to_z3 ctx c
   | AVar x -> tpedvar_to_z3 ctx (x.ty, x.x)

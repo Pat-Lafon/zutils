@@ -17,11 +17,11 @@ let bi_qregex_check (regex_check : t ctx -> 'a regex -> 'b regex) (ctx : t ctx)
     | Regex regex -> Regex (regex_check ctx regex)
     | RForall { qv; body } ->
         let qv = __force_typed [%here] qv in
-        let qv' = qv.x #: (unfold_sort sort_ctx qv.ty) in
+        let qv' = qv.x#:(unfold_sort sort_ctx qv.ty) in
         RForall { qv; body = aux sort_ctx (add_to_right ctx qv') body }
     | RExists { qv; body } ->
         let qv = __force_typed [%here] qv in
-        let qv' = qv.x #: (unfold_sort sort_ctx qv.ty) in
+        let qv' = qv.x#:(unfold_sort sort_ctx qv.ty) in
         RExists { qv; body = aux sort_ctx (add_to_right ctx qv') body }
   in
   aux emp ctx qregex

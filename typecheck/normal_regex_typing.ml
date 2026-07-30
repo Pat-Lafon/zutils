@@ -16,7 +16,7 @@ let bi_regex_check (label_check : spec_tyctx -> 'a -> 'b) (ctx : spec_tyctx)
     match regex with
     | RExpr r ->
         let r = bi_expr_check ctx r in
-        (RExpr r.x) #: r.ty
+        (RExpr r.x)#:r.ty
     | _ ->
         let aux ctx r = _get_x @@ aux ctx r in
         let res =
@@ -42,7 +42,7 @@ let bi_regex_check (label_check : spec_tyctx -> 'a -> 'b) (ctx : spec_tyctx)
           | SyntaxSugar r -> bi_sugar_check ctx r
           | RExpr _ -> _die [%here]
         in
-        res #: Nt.Ty_unit
+        res#:Nt.Ty_unit
   and bi_extension_check ctx = function
     | ComplementA t -> ComplementA (_get_x @@ aux ctx t)
     | AnyA -> AnyA
@@ -71,11 +71,11 @@ let bi_regex_check (label_check : spec_tyctx -> 'a -> 'b) (ctx : spec_tyctx)
   and bi_expr_check ctx = function
     | RRegex r ->
         let r = aux ctx r in
-        (RRegex r.x) #: r.ty
-    | RConst c -> (RConst c) #: (Normal_constant_typing.infer_constant c)
+        (RRegex r.x)#:r.ty
+    | RConst c -> (RConst c)#:(Normal_constant_typing.infer_constant c)
     | RVar x ->
         let x = Normal_id_typing.bi_typed_id_infer ctx.regex_tyctx x in
-        (RVar x) #: x.ty
+        (RVar x)#:x.ty
     | RApp { func; arg } ->
         let f = aux ctx func in
         let argty, resty =
@@ -98,36 +98,36 @@ let bi_regex_check (label_check : spec_tyctx -> 'a -> 'b) (ctx : spec_tyctx)
         (* in *)
         let arg = bi_expr_check ctx arg in
         let _ = Nt._type_unify [%here] arg.ty argty in
-        (RApp { func = f.x; arg = arg.x }) #: resty
+        (RApp { func = f.x; arg = arg.x })#:resty
     | RLet { lhs; rhs; body } ->
         let rhs = bi_expr_check ctx rhs in
-        let lhs = lhs.x #: rhs.ty in
+        let lhs = lhs.x#:rhs.ty in
         let body = aux (add_var ctx lhs) body in
-        (RLet { lhs; rhs = rhs.x; body = body.x }) #: body.ty
-    | Repeat (x, r) -> (Repeat (x, _get_x @@ aux ctx r)) #: Nt.Ty_unit
+        (RLet { lhs; rhs = rhs.x; body = body.x })#:body.ty
+    | Repeat (x, r) -> (Repeat (x, _get_x @@ aux ctx r))#:Nt.Ty_unit
     | QFRegex { qv; body } -> (
         match qv.ty with
         | RForall ty ->
-            let qv = qv.x #: ty in
+            let qv = qv.x#:ty in
             let body = aux (add_var ctx qv) body in
             let retty = Nt.mk_arr qv.ty body.ty in
-            (QFRegex { qv = qv.x #: (RForall qv.ty); body = body.x }) #: retty
+            (QFRegex { qv = qv.x#:(RForall qv.ty); body = body.x })#:retty
         | RExists ty ->
-            let qv = qv.x #: ty in
+            let qv = qv.x#:ty in
             let body = aux (add_var ctx qv) body in
             let retty = Nt.mk_arr qv.ty body.ty in
-            (QFRegex { qv = qv.x #: (RExists qv.ty); body = body.x }) #: retty
+            (QFRegex { qv = qv.x#:(RExists qv.ty); body = body.x })#:retty
         | RPi ty ->
-            let qv = qv.x #: ty in
+            let qv = qv.x#:ty in
             let body = aux ctx body in
             let retty = Nt.mk_arr (ty_set qv.ty) body.ty in
-            (QFRegex { qv = qv.x #: (RPi qv.ty); body = body.x }) #: retty
+            (QFRegex { qv = qv.x#:(RPi qv.ty); body = body.x })#:retty
         | RForallC c ->
             let body = aux ctx body in
-            (QFRegex { qv = qv.x #: (RForallC c); body = body.x }) #: body.ty
+            (QFRegex { qv = qv.x#:(RForallC c); body = body.x })#:body.ty
         | RExistsC c ->
             let body = aux ctx body in
-            (QFRegex { qv = qv.x #: (RExistsC c); body = body.x }) #: body.ty)
+            (QFRegex { qv = qv.x#:(RExistsC c); body = body.x })#:body.ty)
   in
   aux ctx regex
 
