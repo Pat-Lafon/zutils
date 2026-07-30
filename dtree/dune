@@ -1,14 +1,12 @@
 (env
-  (dev
-    (flags (:standard -w -32 -w -35 -w -27))))
+ (dev
+  (flags
+   (:standard -w -32 -w -35 -w -27))))
 
 (library
  (public_name zutils.dtree)
  (name dtree)
  (libraries str bigarray sugar)
- (modules
-   FastDT
-   dt
- )
- (preprocess (pps ppx_here))
-)
+ (modules FastDT dt)
+ (preprocess
+  (pps ppx_here)))

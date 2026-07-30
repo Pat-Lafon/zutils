@@ -75,7 +75,6 @@ let compare t1 t2 =
   aux t1 t2
 
 let eq t1 t2 = compare t1 t2 == 0
-
 let is_empty = function E -> true | _ -> false
 
 let merge h1 h2 =
@@ -93,7 +92,6 @@ let rec merge_pairs = function
   | h1 :: h2 :: hs -> merge (merge h1 h2) (merge_pairs hs)
 
 let find_min = function E -> raise Empty | T (x, _) -> x
-
 let delete_min = function E -> raise Empty | T (_, hs) -> merge_pairs hs
 
 let pairinghp x =

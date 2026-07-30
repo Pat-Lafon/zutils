@@ -51,7 +51,6 @@ module Tree = struct
     aux 0 tr
 
   let rec size = function Leaf -> 0 | Node (_, a, b) -> 1 + size a + size b
-
   let flip tr = match tr with Leaf -> Leaf | Node (a, b, c) -> Node (a, c, b)
 
   let rec rec_flip tr =
