@@ -40,22 +40,21 @@ let mk_nth_lit loc lit n = (AProj (lit, n))#:(Nt.get_nth_ty loc lit.ty n)
 
 (** lit *)
 
-let rec fv_lit (lit_e : 't lit) =
+let rec fold_lit f acc (lit_e : 't lit) =
+  let acc = f acc lit_e in
   match lit_e with
-  | AC _ -> []
-  | AVar _t_stringtyped0 -> [] @ [ _t_stringtyped0 ]
-  | ATu _t__tlittypedlist0 ->
-      [] @ List.concat (List.map typed_fv_lit _t__tlittypedlist0)
-  | AProj (_t__tlittyped0, _) -> [] @ typed_fv_lit _t__tlittyped0
-  | ARecord _t__tlittypedlist0 ->
-      []
-      @ List.concat
-          (List.map (fun (_, lit) -> typed_fv_lit lit) _t__tlittypedlist0)
-  | AField (_t__tlittyped0, _) -> [] @ typed_fv_lit _t__tlittyped0
-  | AAppOp (_, _t__tlittypedlist1) ->
-      [] @ List.concat (List.map typed_fv_lit _t__tlittypedlist1)
+  | AC _ | AVar _ -> acc
+  | ATu l | AAppOp (_, l) -> List.fold_left (typed_fold_lit f) acc l
+  | AProj (t, _) | AField (t, _) -> typed_fold_lit f acc t
+  | ARecord l -> List.fold_left (fun acc (_, t) -> typed_fold_lit f acc t) acc l
 
-and typed_fv_lit (lit_e : ('t, 't lit) typed) = fv_lit lit_e.x
+and typed_fold_lit f acc (lit_e : ('t, 't lit) typed) = fold_lit f acc lit_e.x
+
+let fv_lit (lit_e : 't lit) =
+  List.rev
+  @@ fold_lit (fun acc -> function AVar v -> v :: acc | _ -> acc) [] lit_e
+
+let typed_fv_lit (lit_e : ('t, 't lit) typed) = fv_lit lit_e.x
 
 let rec subst_lit (string_x : string) f (lit_e : 't lit) =
   match lit_e with
@@ -81,6 +80,18 @@ let rec subst_lit (string_x : string) f (lit_e : 't lit) =
 
 and typed_subst_lit (string_x : string) f (lit_e : ('t, 't lit) typed) =
   lit_e#->(subst_lit string_x f)
+
+let rec map_op f (lit_e : 't lit) =
+  match lit_e with
+  | AC _ | AVar _ -> lit_e
+  | ATu l -> ATu (List.map (typed_map_op f) l)
+  | AProj (lit, n) -> AProj (typed_map_op f lit, n)
+  | ARecord l ->
+      ARecord (List.map (fun (fd, lit) -> (fd, typed_map_op f lit)) l)
+  | AField (lit, fd) -> AField (typed_map_op f lit, fd)
+  | AAppOp (op, args) -> AAppOp (op#->f, List.map (typed_map_op f) args)
+
+and typed_map_op f (lit_e : ('t, 't lit) typed) = lit_e#->(map_op f)
 
 let rec map_lit : 't 's. ('t -> 's) -> 't lit -> 's lit =
  fun f lit_e ->
@@ -108,7 +119,6 @@ let subst_lit_instance x instance e = subst_f_to_instance subst_lit x instance e
 
 let typed_subst_lit_instance x instance e =
   subst_f_to_instance typed_subst_lit x instance e
-(* Generated from _lit.ml *)
 
 (* force *)
 let typed_lit_force_aappop_opt (lit, op) =
@@ -273,7 +283,6 @@ let subst_prop_instance x instance e =
 
 let typed_subst_prop_instance x instance e =
   subst_f_to_instance typed_subst_prop x instance e
-(* Generated from _prop.ml *)
 
 (* force *)
 let prop_force_typed_lit_opt prop =
@@ -763,11 +772,6 @@ let to_nnf prop =
   in
   let res = aux false prop in
   res
-
-(* let to_snf prop = match prop with Exists { body; _ } -> body | _ -> prop *)
-(* let qvs, prop = lift_ex_quantifiers prop in *)
-(* let qvs = match qvs with [] -> [] | _ :: qvs -> qvs in *)
-(* smart_exists qvs prop *)
 
 let snf_quantified_var_by_name name =
   let rec aux prop =
