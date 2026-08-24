@@ -60,6 +60,27 @@ let rec is_base_tp = function
   | Ty_tuple l -> List.for_all is_base_tp l
   | _ -> false
 
+let nt_children = function
+  | Ty_unknown | Ty_var _ -> []
+  | Ty_arrow (a, b) -> [ a; b ]
+  | Ty_tuple nts -> nts
+  | Ty_constructor (_, args) -> args
+  | Ty_record { fds; _ } -> List.map (fun x -> x.ty) fds
+  | Ty_poly (_, body) -> [ body ]
+
+let rec exists_nt p ty = p ty || List.exists (exists_nt p) (nt_children ty)
+
+let rec map_nt f ty =
+  f
+    (match ty with
+    | Ty_unknown | Ty_var _ -> ty
+    | Ty_arrow (a, b) -> Ty_arrow (map_nt f a, map_nt f b)
+    | Ty_tuple nts -> Ty_tuple (List.map (map_nt f) nts)
+    | Ty_constructor (id, args) -> Ty_constructor (id, List.map (map_nt f) args)
+    | Ty_record { alias; fds } ->
+        Ty_record { alias; fds = List.map (fun x -> x#=>(map_nt f)) fds }
+    | Ty_poly (y, body) -> Ty_poly (y, map_nt f body))
+
 (* let is_basic_tp = function Ty_enum _ -> true | _ -> false *)
 let _constructor_ty_0 name = Ty_constructor (name, [])
 let unit_ty = _constructor_ty_0 "unit"
@@ -89,14 +110,6 @@ let get_nth_ty loc ty n =
           @@ spf "cannot find %i th element of tuple type %s" n (show_nt ty)
       | Some ty -> ty)
   | _ -> _die_with loc "not a tuple type"
-
-(* let get_record_name = function *)
-(*   | Ty_record { record_name; _ } -> record_name *)
-(*   | _ -> _die [%here] *)
-
-(* let get_record_feilds = function *)
-(*   | Ty_enum { enum_elems; _ } -> enum_elems *)
-(*   | _ -> _die [%here] *)
 
 let get_arr_lhs = function Ty_arrow (t1, _) -> t1 | _ -> _die [%here]
 let get_arr_rhs = function Ty_arrow (_, t2) -> t2 | _ -> _die [%here]
