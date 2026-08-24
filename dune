@@ -1,9 +1,11 @@
+; ocamlParser is a vendored copy of the OCaml compiler frontend; mark it vendored
+; so fmt skips it
+
+(vendored_dirs ocamlParser)
+
 (library
  (name zutils)
  (public_name zutils)
  (wrapped true)
- (modules
-   zutils
- )
- (libraries zdatatype normalty ocamlParser typectx myconfig prop dtree)
-)
+ (modules zutils)
+ (libraries zdatatype normalty ocamlParser typectx myconfig prop dtree))
