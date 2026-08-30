@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  OCAML_COMPILER: "5.2"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: ${{ env.OCAML_COMPILER }}
+          dune-cache: true
+
+      # setup-ocaml caches the switch it creates but not the dep install into
+      # it, and z3 builds from source here — so the deps get their own entry.
+      # The compiler is in the key because a bump invalidates the whole switch.
+      - name: Cache opam deps
+        id: opam-cache
+        uses: actions/cache@v4
+        with:
+          path: _opam
+          key: opam-deps-${{ runner.os }}-${{ env.OCAML_COMPILER }}-${{ hashFiles('zutils.opam') }}
+
+      - if: steps.opam-cache.outputs.cache-hit != 'true'
+        run: opam install . --deps-only --with-test
+
+      - run: opam exec -- dune build
+      - run: opam exec -- dune runtest
+
+  # Installs the .ocamlformat version and runs `dune build @fmt`, which exits
+  # nonzero on a difference. Its own job: the check needs no project deps, so
+  # it skips the z3 build.
+  lint-fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: ${{ env.OCAML_COMPILER }}
+      - uses: ocaml/setup-ocaml/lint-fmt@v3
