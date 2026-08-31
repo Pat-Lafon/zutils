@@ -4,8 +4,6 @@ open Syntax
 open Zdatatype
 open Sugar
 
-let _log = ZUtilsConfig._log "axiom"
-
 let add_laxiom asys (name, prop) =
   let preds = StrSet.of_list @@ get_fv_preds_from_prop prop in
   if StrMap.mem name asys then
@@ -18,7 +16,7 @@ let find_axioms_by_preds asys query_preds =
   let m =
     StrMap.filter
       (fun name { preds; _ } ->
-        ( _log @@ fun () ->
+        ( ZUtilsLog.axiom @@ fun () ->
           Pp.printf "@{<bold>in %s@}: %s\n" name
             (StrList.to_string @@ StrSet.to_list preds) );
         StrSet.subset preds query_preds)
@@ -61,7 +59,7 @@ let find_first_poly_type_from_axiom prop =
       None l
   in
   let res = aux prop in
-  ( _log @@ fun () ->
+  ( ZUtilsLog.axiom @@ fun () ->
     match res with
     | None -> Printf.printf "normal type %s\n" (Front.layout_prop prop)
     | Some x ->
@@ -99,7 +97,7 @@ let gather_indicator_types query axioms =
       List.fold_right (fun id -> Nt.subst_nt (id, Nt.mk_uninterp id)) tvars ty
     in
     let () =
-      _log @@ fun () ->
+      ZUtilsLog.axiom @@ fun () ->
       Pp.printf "prop: %s\nunify %s and %s\n"
         (Front.layout_prop ax.prop)
         (Nt.layout ax_fst_ty) (Nt.layout ty)
@@ -136,7 +134,7 @@ let gather_indicator_types query axioms =
         in
         match l with
         | [] ->
-            ( _log @@ fun () ->
+            ( ZUtilsLog.axiom @@ fun () ->
               Printf.printf
                 "Warning: axiom [%s] should at least have one instantiation."
                 name );
@@ -145,7 +143,7 @@ let gather_indicator_types query axioms =
   in
   let props = List.concat_map instantiate_axiom axioms in
   let () =
-    _log @@ fun () ->
+    ZUtilsLog.axiom @@ fun () ->
     List.iter
       (fun ((name, ty), _) ->
         Pp.printf "%s::@{<bold>%s@}\n" name
@@ -162,18 +160,18 @@ let all_axioms asys =
 let find_axioms asys query =
   let query_preds = StrSet.of_list @@ get_fv_preds_from_prop query in
   let query_preds = pred_extension query_preds in
-  ( _log @@ fun () ->
+  ( ZUtilsLog.axiom @@ fun () ->
     Pp.printf "@{<bold>query preds@}: %s\n"
       (StrList.to_string @@ StrSet.to_list query_preds) );
   let axiom2 = find_axioms_by_preds asys query_preds in
   let axiom_set = StrSet.of_list axiom2 in
   let axioms = StrSet.to_list axiom_set in
   let () =
-    _log @@ fun () ->
+    ZUtilsLog.axiom @@ fun () ->
     Pp.printf "@{<bold>Axioms by pred: @} %s\n" @@ StrList.to_string axiom2
   in
   let () =
-    _log @@ fun () ->
+    ZUtilsLog.axiom @@ fun () ->
     Pp.printf "@{<bold>Axioms: @} %s\n" @@ StrList.to_string axioms
   in
   let props = StrMap.filter (fun name _ -> StrSet.mem name axiom_set) asys in
