@@ -35,7 +35,7 @@ let instantiate_poly_type_var_in_smt =
 
 let to_smtty t =
   let t =
-    if Myconfig.get_instantiate_poly_type_var_in_smt () then
+    if ZUtilsConfig.get_instantiate_poly_type_var_in_smt () then
       instantiate_poly_type_var_in_smt t
     else t
   in

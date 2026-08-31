@@ -84,7 +84,7 @@ let eq_prop p1 p2 = equal_prop (fun _ _ -> true) p1 p2
 let uAVar x = AVar (Nt.untyped x)
 
 let sort_lit_record args =
-  if Myconfig.get_bool_option "if_sort_record" then
+  if ZUtilsConfig.get_if_sort_record () then
     List.sort (fun a b -> String.compare (fst a) (fst b)) args
   else args
 
@@ -94,13 +94,13 @@ let as_lit_record loc = function
   | ARecord args -> sort_lit_record args
   | _ -> _die loc
 
-let get_lit_feild loc t name =
+let get_lit_field loc t name =
   let args = as_lit_record loc t in
   match List.find_opt (fun y -> String.equal name (fst y)) args with
   | None -> _die [%here]
   | Some n -> snd n
 
-let get_lit_feild_idx loc t name =
+let get_lit_field_idx loc t name =
   let args = as_lit_record loc t in
   match List.find_index (fun y -> String.equal name (fst y)) args with
   | None -> _die [%here]

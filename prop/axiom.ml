@@ -4,8 +4,6 @@ open Syntax
 open Zdatatype
 open Sugar
 
-let _log = Myconfig._log "axiom"
-
 let add_laxiom asys (name, tasks, prop, z3_prop) =
   let tasks = StrSet.of_list tasks in
   let preds = StrSet.of_list @@ get_fv_preds_from_prop prop in
@@ -22,7 +20,7 @@ let find_axioms_by_preds asys query_preds =
   let m =
     StrMap.filter
       (fun name { preds; _ } ->
-        ( _log @@ fun () ->
+        ( ZUtilsLog.axiom @@ fun () ->
           Pp.printf "@{<bold>in %s@}: %s\n" name
             (StrList.to_string @@ StrSet.to_list preds) );
         StrSet.subset preds query_preds)
@@ -69,13 +67,13 @@ let find_first_poly_type_from_axiom prop =
   match aux prop with
   | None ->
       let () =
-        _log @@ fun () ->
+        ZUtilsLog.axiom @@ fun () ->
         Printf.printf "normal type %s\n" (Front.layout_prop prop)
       in
       None
   | Some x ->
       let () =
-        _log @@ fun () ->
+        ZUtilsLog.axiom @@ fun () ->
         Pp.printf "@{<bold>Axiom Indicator Type %s@} in %s\n" (Nt.layout x.ty)
           (Front.layout_prop prop)
       in
@@ -118,7 +116,7 @@ let gather_indicator_types query axioms =
       List.fold_right (fun id -> Nt.subst_nt (id, Nt.mk_uninterp id)) tvars ty
     in
     let () =
-      _log @@ fun () ->
+      ZUtilsLog.axiom @@ fun () ->
       Pp.printf "prop: %s\nunify %s and %s\n"
         (Front.layout_prop ax.prop)
         (Nt.layout ax_fst_ty) (Nt.layout ty)
@@ -155,7 +153,7 @@ let gather_indicator_types query axioms =
         in
         match l with
         | [] ->
-            ( _log @@ fun () ->
+            ( ZUtilsLog.axiom @@ fun () ->
               Printf.printf
                 "Warning: axiom [%s] should at least have one instantiation."
                 name );
@@ -164,7 +162,7 @@ let gather_indicator_types query axioms =
   in
   let props = List.concat_map instantiate_axiom axioms in
   let () =
-    _log @@ fun () ->
+    ZUtilsLog.axiom @@ fun () ->
     List.iter
       (fun ((name, ty), _) ->
         Pp.printf "%s::@{<bold>%s@}\n" name
@@ -181,18 +179,18 @@ let find_axioms asys (task, query) =
   let axiom1 =
     match task with None -> [] | Some task -> find_axioms_by_task asys task
   in
-  ( _log @@ fun () ->
+  ( ZUtilsLog.axiom @@ fun () ->
     Pp.printf "@{<bold>%s@}: %s\n"
       (layout_option (fun x -> x) task)
       (StrList.to_string @@ StrSet.to_list query_preds) );
   let axiom2 = find_axioms_by_preds asys query_preds in
   let axioms = List.slow_rm_dup String.equal (axiom1 @ axiom2) in
   let () =
-    _log @@ fun () ->
+    ZUtilsLog.axiom @@ fun () ->
     Pp.printf "@{<bold>Axioms by pred: @} %s\n" @@ StrList.to_string axiom2
   in
   let () =
-    _log @@ fun () ->
+    ZUtilsLog.axiom @@ fun () ->
     Pp.printf "@{<bold>Axioms: @} %s\n" @@ StrList.to_string axioms
   in
   let props =

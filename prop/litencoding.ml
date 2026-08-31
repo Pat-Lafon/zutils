@@ -2,14 +2,11 @@ open Z3
 open Z3aux
 open Syntax
 open Sugar
-open Myconfig
 open Constencoding
-
-let _log = _log "z3encode"
 
 let rec typed_lit_to_z3 ctx lit =
   let () =
-    _log @@ fun () ->
+    ZUtilsLog.z3encode @@ fun () ->
     Printf.printf "lit encoding: %s : %s\n" (Front.layout_lit lit.x)
       (Nt.layout lit.ty)
   in
@@ -20,7 +17,7 @@ let rec typed_lit_to_z3 ctx lit =
         (List.map (typed_lit_to_z3 ctx) lits)
   | AProj (lit, n) ->
       let () =
-        _log @@ fun () ->
+        ZUtilsLog.z3encode @@ fun () ->
         Printf.printf "lit encoding: AProj : %s\n" (Nt.layout lit.ty)
       in
       Z3.FuncDecl.apply
@@ -43,7 +40,7 @@ let rec typed_lit_to_z3 ctx lit =
   | AVar x -> tpedvar_to_z3 ctx (x.ty, x.x)
   | AAppOp (op, args) -> (
       let () =
-        _log @@ fun () ->
+        ZUtilsLog.z3encode @@ fun () ->
         Pp.printf "app (%s:%s) on %s\n" op.x (Nt.layout op.ty)
           (Zdatatype.List.split_by_comma
              (fun l -> spf "%s:%s" (Front.layout_lit l.x) (Nt.layout l.ty))
@@ -51,7 +48,7 @@ let rec typed_lit_to_z3 ctx lit =
       in
       let args = List.map (typed_lit_to_z3 ctx) args in
       let () =
-        _log @@ fun () ->
+        ZUtilsLog.z3encode @@ fun () ->
         Pp.printf "app (%s:%s) on %s\n" op.x (Nt.layout op.ty)
           (Zdatatype.List.split_by_comma Expr.to_string args)
       in

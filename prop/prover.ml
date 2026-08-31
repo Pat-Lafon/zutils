@@ -3,18 +3,18 @@ open Solver
 open Goal
 open Sugar
 open Syntax
-open Myconfig
+open ZUtilsConfig
 module Propencoding = Propencoding
 
 type smt_result = SmtSat of Model.model | SmtUnsat | Timeout
 
 let layout_model model =
-  Sugar.short_str (Myconfig.get_max_printing_size ())
+  Sugar.short_str (ZUtilsConfig.get_max_printing_size ())
   @@ Z3.Model.to_string model
 
 let layout_smt_result = function
   | SmtSat model ->
-      ( _log "model" @@ fun _ ->
+      ( ZUtilsLog.model @@ fun _ ->
         Printf.printf "model:\n%s\n" (layout_model model) );
       "sat"
   | SmtUnsat -> "unsat"
@@ -102,18 +102,18 @@ let check_sat (task, prop) =
   in
   let query = Propencoding.to_z3 ctx prop in
   let _ =
-    _log_queries @@ fun _ ->
+    ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>QUERY:@}\n%s\n" (Expr.to_string query)
   in
   Goal.reset goal;
   Goal.add goal (axioms @ [ query ]);
   let _ =
-    _log_queries @@ fun _ ->
+    ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>Goal:@}\n%s\n" (Goal.to_string goal)
   in
   (* let goal = Goal.simplify goal None in *)
   (* let _ = *)
-  (*   _log_queries @@ fun _ -> *)
+  (*   ZUtilsLog.queries @@ fun _ -> *)
   (*   Pp.printf "@{<bold>Simplifid Goal:@}\n%s\n" (Goal.to_string goal) *)
   (* in *)
   Goal.add goal axioms;
@@ -121,14 +121,15 @@ let check_sat (task, prop) =
   Solver.add solver (get_formulas goal);
   let time_t, res = Sugar.clock (fun () -> handle_sat_result solver) in
   let () =
-    _log_stat @@ fun _ -> Pp.printf "@{<bold>Z3 Solving time: %.2f@}\n" time_t
+    ZUtilsLog.stat @@ fun _ ->
+    Pp.printf "@{<bold>Z3 Solving time: %.2f@}\n" time_t
   in
   res
 
 let check_sat_bool (task, prop) =
   let res = check_sat (task, prop) in
   let () =
-    _log_queries @@ fun _ ->
+    ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>SAT(%s): @} %s\n" (layout_smt_result res)
       (Front.layout_prop prop)
   in
@@ -136,11 +137,11 @@ let check_sat_bool (task, prop) =
     match res with
     | SmtUnsat -> false
     | SmtSat model ->
-        ( _log "model" @@ fun _ ->
+        ( ZUtilsLog.model @@ fun _ ->
           Printf.printf "model:\n%s\n" (layout_model model) );
         true
     | Timeout ->
-        (_log_queries @@ fun _ -> Pp.printf "@{<bold>SMTTIMEOUT@}\n");
+        (ZUtilsLog.queries @@ fun _ -> Pp.printf "@{<bold>SMTTIMEOUT@}\n");
         false
   in
   res
@@ -165,9 +166,9 @@ let check_valid (task, prop) =
   match check_sat (task, Not prop) with
   | SmtUnsat -> true
   | SmtSat model ->
-      ( _log "model" @@ fun _ ->
+      ( ZUtilsLog.model @@ fun _ ->
         Printf.printf "model:\n%s\n" (layout_model model) );
       false
   | Timeout ->
-      (_log_queries @@ fun _ -> Pp.printf "@{<bold>SMTTIMEOUT@}\n");
+      (ZUtilsLog.queries @@ fun _ -> Pp.printf "@{<bold>SMTTIMEOUT@}\n");
       false

@@ -12,32 +12,30 @@ open Ast_helper
 let normal_apply f args =
   Exp.apply f @@ List.map (fun x -> (Asttypes.Nolabel, x)) args
 
-(* NOTE: drop type notation *)
 let rec lit_to_expr expr =
-  let rec aux expr =
-    match expr with
-    | AC c -> constant_to_expr c
-    | AAppOp (op, args) ->
-        mk_op_apply (aux (AVar op), List.map typed_lit_to_expr args)
-    | ATu l -> Exp.tuple (List.map typed_lit_to_expr l)
-    | AProj (lit, 0) -> normal_apply (mkvar fst_func) [ aux lit.x ]
-    | AProj (lit, 1) -> normal_apply (mkvar snd_func) [ aux lit.x ]
-    | AProj (lit, n) ->
-        normal_apply (mkvar proj_func) [ aux lit.x; constant_to_expr (I n) ]
-    | ARecord l ->
-        Exp.record
-          (List.map (fun (x, lit) -> (id_to_longid x, aux lit.x)) l)
-          None
-    | AField (lit, fd) -> Exp.field (aux lit.x) (id_to_longid fd)
-    | AVar x ->
-        if Myconfig.get_show_var_type_in_prop () then
-          Exp.constraint_ (mkvar x.x) (Nt.t_to_core_type x.ty)
-        else mkvar x.x
-  in
-  aux expr
+  match expr with
+  | AC c -> constant_to_expr c
+  | AAppOp (op, args) ->
+      mk_op_apply
+        (lit_to_expr (AVar op.x#:op.ty), List.map typed_lit_to_expr args)
+  | ATu l -> Exp.tuple (List.map typed_lit_to_expr l)
+  | AProj (lit, 0) -> normal_apply (mkvar fst_func) [ lit_to_expr lit.x ]
+  | AProj (lit, 1) -> normal_apply (mkvar snd_func) [ lit_to_expr lit.x ]
+  | AProj (lit, n) ->
+      normal_apply (mkvar proj_func)
+        [ lit_to_expr lit.x; constant_to_expr (I n) ]
+  | ARecord l ->
+      Exp.record
+        (List.map (fun (x, lit) -> (id_to_longid x, lit_to_expr lit.x)) l)
+        None
+  | AField (lit, fd) -> Exp.field (lit_to_expr lit.x) (id_to_longid fd)
+  | AVar x ->
+      if ZUtilsConfig.get_show_var_type_in_prop () then
+        Exp.constraint_ (mkvar x.x) (Nt.t_to_core_type x.ty)
+      else mkvar x.x
 
 and typed_lit_to_expr expr =
-  if Myconfig.get_bool_option "show_var_type_in_lit" then
+  if ZUtilsConfig.get_show_var_type_in_lit () then
     match expr.ty with
     | Nt.Ty_unknown -> lit_to_expr expr.x
     | _ ->
@@ -71,6 +69,9 @@ and layout_typed_lit_to_smtlib2 expr = layout_lit_to_smtlib2 expr.x
 let layout_lit lit = string_of_expression @@ lit_to_expr lit
 let layout = layout_lit
 let layout_typed_lit lit = layout lit.x
+
+let layout_typed_lit_mp mp lit =
+  string_of_expression @@ lit_to_expr (Syntax.map_op mp lit.x)
 
 open Nt
 

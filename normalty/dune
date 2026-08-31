@@ -3,7 +3,7 @@
  (public_name zutils.normalty)
  (wrapped true)
  (modules_without_implementation)
- (libraries sugar core ocamlParser ppxlib myconfig)
+ (libraries sugar core ocamlParser ppxlib zutilsConfig)
  (modules ast subst frontend syntax unification normalty)
  (preprocess
   (pps

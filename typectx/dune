@@ -3,7 +3,7 @@
  (public_name zutils.typectx)
  (wrapped true)
  (modules_without_implementation)
- (libraries sugar core myconfig)
+ (libraries sugar core zutilsConfig)
  (modules typectx)
  (preprocess
   (pps

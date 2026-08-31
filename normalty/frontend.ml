@@ -12,8 +12,8 @@ let get_str t =
 
 let rec core_type_to_t ct = core_type_desc_to_t ct.ptyp_desc
 
-and object_to_labeled_type feild =
-  match feild.pof_desc with
+and object_to_labeled_type field =
+  match field.pof_desc with
   | Otag (label, ct) -> label.txt#:(core_type_to_t ct)
   | _ -> _die_with [%here] "wrong record type"
 
@@ -67,13 +67,13 @@ and t_to_core_type_desc t =
       Ptyp_constr (Location.mknoloc id, List.map t_to_core_type args)
   | Ty_record { fds; alias } ->
       let alias = match alias with None -> "_record" | Some alias -> alias in
-      if Myconfig.get_show_record_type_feilds () then
+      if ZUtilsConfig.get_show_record_type_fields () then
         let name_type = "record_name"#:(Ty_constructor (alias, [])) in
         Ptyp_object
-          (List.map labeled_t_to_feild (name_type :: fds), Asttypes.Closed)
+          (List.map labeled_t_to_field (name_type :: fds), Asttypes.Closed)
       else mk0 alias
 
-and labeled_t_to_feild { x; ty = t } =
+and labeled_t_to_field { x; ty = t } =
   Of.tag (Location.mknoloc x) (t_to_core_type t)
 
 let core_type_to_notated_t ct =

@@ -2,7 +2,6 @@ open Z3
 open Z3aux
 open Syntax
 open Sugar
-open Myconfig
 open Zdatatype
 
 let unique_quantifiers prop =
@@ -42,13 +41,13 @@ let to_z3 ctx prop =
     match prop with
     | Implies (p1, p2) ->
         let () =
-          _log "z3encode" @@ fun () ->
+          ZUtilsLog.z3encode @@ fun () ->
           Pp.printf "implies %s %s\n" (Front.layout p1) (Front.layout p2)
         in
         let e1 = aux p1 in
         let e2 = aux p2 in
         let () =
-          _log "z3encode" @@ fun () ->
+          ZUtilsLog.z3encode @@ fun () ->
           Pp.printf "implies %s %s\n" (Expr.to_string e1) (Expr.to_string e2)
         in
         Boolean.mk_implies ctx e1 e2
@@ -66,12 +65,12 @@ let to_z3 ctx prop =
   let () = _assert [%here] "sanity check" (unique_quantifiers prop) in
   let p1 = to_nnf prop in
   let () =
-    _log_queries @@ fun _ ->
+    ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>To NNF:@} %s\n" (Front.layout_prop p1)
   in
   (* let p2 = to_snf p1 in *)
   (* let () = *)
-  (*   _log_queries @@ fun _ -> *)
+  (*   ZUtilsLog.queries @@ fun _ -> *)
   (*   Pp.printf "@{<bold>To SNF:@} %s\n" (Front.layout_prop p2) *)
   (* in *)
   aux p1

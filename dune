@@ -8,4 +8,4 @@
  (public_name zutils)
  (wrapped true)
  (modules zutils)
- (libraries zdatatype normalty ocamlParser typectx myconfig prop dtree))
+ (libraries zdatatype normalty ocamlParser typectx zutilsConfig prop dtree))

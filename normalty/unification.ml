@@ -4,8 +4,6 @@ open Zdatatype
 open Subst
 open Syntax
 
-let _log = Myconfig._log "unification"
-
 module BoundConstraints = struct
   type bc = { type_vars : unit StrMap.t; cs : (t * t) list }
 
@@ -29,7 +27,7 @@ module BoundConstraints = struct
     in
     let res = aux vars (ps, t) in
     let () =
-      _log (fun () ->
+      ZUtilsLog.unification (fun () ->
           Pp.printf "@{<bold>uniquelize@}: %s :: %s ====>>===== %s :: %s\n"
             (StrList.to_string (StrMap.to_key_list vars))
             (layout_nt t)
@@ -79,7 +77,7 @@ end
 let type_unification m (cs : (t * t) list) =
   let rec aux m cs =
     let () =
-      _log (fun () ->
+      ZUtilsLog.unification (fun () ->
           Pp.printf "@{<bold>m@}: %s\n"
             (List.split_by_comma
                (fun (x, ty) -> spf "%s := %s" x (layout_nt ty))
@@ -94,7 +92,7 @@ let type_unification m (cs : (t * t) list) =
     | (t1, t2) :: cs -> (
         let err () =
           let () =
-            _log @@ fun _ ->
+            ZUtilsLog.unification @@ fun _ ->
             Printf.printf "cannot solve %s = %s\n" (layout_nt t1) (layout_nt t2)
           in
           None
