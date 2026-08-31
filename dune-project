@@ -24,7 +24,6 @@
   dune
   core
   z3
-  dolog
   yojson
   ppxlib
   ppx_assert
