@@ -2,10 +2,7 @@ open Z3
 open Z3aux
 open Syntax
 open Sugar
-open ZUtilsConfig
 open Constencoding
-
-let _log = _log "z3encode"
 
 (* The datatype an [AAppOp] of type [ty] is looked up under: a constructor/accessor keys on
    the type it acts on (first arg), a nullary constructor on its return type. *)

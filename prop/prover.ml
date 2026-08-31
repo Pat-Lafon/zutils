@@ -4,10 +4,6 @@ open Sugar
 open Syntax
 open ZUtilsConfig
 
-let _log_queries = _log "queries"
-let _log_dump_smt = _log "dump_smt"
-let _log_stat = _log "stat"
-
 (* Constructors re-exported so callers use [Prover.SmtUnsat], not [Portfolio.*]. *)
 type smt_result = Portfolio.smt_result =
   | SmtSat
@@ -71,7 +67,7 @@ let serialize_expr (env : Dtencoding.z3_env) (query : Expr.expr) : string =
   Solver.to_string solver
 
 let dump_queries entries =
-  _log_dump_smt @@ fun _ ->
+  ZUtilsLog.dump_smt @@ fun _ ->
   List.iter
     (fun { Portfolio.label; query } ->
       let path =
@@ -152,7 +148,7 @@ let check_sat ~axioms ?(extra_bodies = []) prop =
   let goal = mk_goal ctx true false false in
   Goal.add goal (z3_axioms @ [ query ]);
   let _ =
-    _log_queries @@ fun _ ->
+    ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>Goal:@}\n%s\n" (Goal.to_string goal)
   in
   let solver = mk_solver ctx None in
@@ -161,7 +157,7 @@ let check_sat ~axioms ?(extra_bodies = []) prop =
     Sugar.clock (fun () -> run_z3_binary ~extra_bodies solver)
   in
   let () =
-    _log_stat @@ fun _ ->
+    ZUtilsLog.stat @@ fun _ ->
     Pp.printf "@{<bold>Z3 Solving time [q%i]: %.2f (%s, %i asserts, won:%s)@}\n"
       !query_counter time_t (layout_smt_result res)
       (1 + List.length z3_axioms)

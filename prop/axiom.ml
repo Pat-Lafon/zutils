@@ -4,8 +4,6 @@ open Syntax
 open Zdatatype
 open Sugar
 
-let _log = ZUtilsConfig._log "axiom"
-
 let add_laxiom asys (name, prop) =
   let preds = StrSet.of_list @@ get_fv_preds_from_prop prop in
   if StrMap.mem name asys then
@@ -15,37 +13,14 @@ let add_laxiom asys (name, prop) =
 let add_laxioms asys l = List.fold_left add_laxiom asys l
 
 let find_axioms_by_preds asys query_preds =
-  StrMap.filter
-    (fun name { preds; _ } ->
-      ( ZUtilsLog.axiom @@ fun () ->
-        Pp.printf "@{<bold>in %s@}: %s\n" name
-          (StrList.to_string @@ StrSet.to_list preds) );
-      StrSet.subset preds query_preds)
-    asys
-
-(* A rule fires on the query's own predicates, never on what another rule added,
-   so a rule must also list whatever the predicates it adds would imply. *)
-let pred_extension ps =
-  List.fold_left
-    (fun acc (keys, new_preds) ->
-      if List.exists (fun k -> StrSet.mem k ps) keys then
-        StrSet.add_seq (List.to_seq new_preds) acc
-      else acc)
-    ps
-    (ZUtilsConfig.get_pred_extension_rules ())
-
-let%test "pred_extension fires on any key of a rule, not on every key" =
-  let default = Result.get_ok (ZUtilsConfig.of_yojson (`Assoc [])) in
-  ZUtilsConfig.set
-    { default with pred_extension_rules = [ ([ "hd"; "tl" ], [ "list_mem" ]) ] };
-  let ext l = StrSet.to_list @@ pred_extension (StrSet.of_list l) in
-  ext [ "tl" ] = [ "list_mem"; "tl" ] && ext [ "nil" ] = [ "nil" ]
-
-let%test "pred_extension is one pass, in either rule order" =
-  let default = Result.get_ok (ZUtilsConfig.of_yojson (`Assoc [])) in
-  let ext rules l =
-    ZUtilsConfig.set { default with pred_extension_rules = rules };
-    StrSet.to_list @@ pred_extension (StrSet.of_list l)
+  let m =
+    StrMap.filter
+      (fun name { preds; _ } ->
+        ( ZUtilsLog.axiom @@ fun () ->
+          Pp.printf "@{<bold>in %s@}: %s\n" name
+            (StrList.to_string @@ StrSet.to_list preds) );
+        StrSet.subset preds query_preds)
+      asys
   in
   StrMap.to_key_list m
 
@@ -84,7 +59,7 @@ let find_first_poly_type_from_axiom prop =
       None l
   in
   let res = aux prop in
-  ( _log @@ fun () ->
+  ( ZUtilsLog.axiom @@ fun () ->
     match res with
     | None -> Printf.printf "normal type %s\n" (Front.layout_prop prop)
     | Some x ->
@@ -185,18 +160,18 @@ let all_axioms asys =
 let find_axioms asys query =
   let query_preds = StrSet.of_list @@ get_fv_preds_from_prop query in
   let query_preds = pred_extension query_preds in
-  ( _log @@ fun () ->
+  ( ZUtilsLog.axiom @@ fun () ->
     Pp.printf "@{<bold>query preds@}: %s\n"
       (StrList.to_string @@ StrSet.to_list query_preds) );
   let axiom2 = find_axioms_by_preds asys query_preds in
   let axiom_set = StrSet.of_list axiom2 in
   let axioms = StrSet.to_list axiom_set in
   let () =
-    _log @@ fun () ->
+    ZUtilsLog.axiom @@ fun () ->
     Pp.printf "@{<bold>Axioms by pred: @} %s\n" @@ StrList.to_string axiom2
   in
   let () =
-    _log @@ fun () ->
+    ZUtilsLog.axiom @@ fun () ->
     Pp.printf "@{<bold>Axioms: @} %s\n" @@ StrList.to_string axioms
   in
   let props = StrMap.filter (fun name _ -> StrSet.mem name axiom_set) asys in

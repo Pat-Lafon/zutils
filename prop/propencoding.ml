@@ -2,10 +2,7 @@ open Z3
 open Z3aux
 open Syntax
 open Sugar
-open ZUtilsConfig
 open Zdatatype
-
-let _log_queries = _log "queries"
 
 let unique_quantifiers prop =
   let rec aux prop =
@@ -69,8 +66,8 @@ let to_z3 (env : Dtencoding.z3_env) prop =
     | Lit lit -> Litencoding.typed_lit_to_z3 env lit
   in
   let () =
-    if List.mem "debug" (get_log_tags ()) then
-      _assert [%here] "sanity check" (unique_quantifiers prop)
+    ZUtilsLog.debug @@ fun () ->
+    _assert [%here] "sanity check" (unique_quantifiers prop)
   in
   let p1 = to_nnf prop in
   let () =

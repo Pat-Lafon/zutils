@@ -4,8 +4,6 @@ open Zdatatype
 open Subst
 open Syntax
 
-let _log = ZUtilsConfig._log "unification"
-
 module BoundConstraints = struct
   type bc = { type_vars : unit StrMap.t; cs : (t * t) list }
 

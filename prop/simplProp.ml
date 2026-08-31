@@ -4,8 +4,6 @@ open Zdatatype
 
 (** Simplify Query *)
 
-let _log = ZUtilsConfig._log "simplProp"
-
 let lit_is_var_by_name x lit =
   match lit.x with AVar a when String.equal a.x x -> true | _ -> false
 

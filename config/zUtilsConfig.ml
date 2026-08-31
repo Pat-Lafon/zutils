@@ -61,6 +61,3 @@ let get_show_type_infer_constant_judgement () =
 
 let get_show_type_infer_variable_judgement () =
   (get ()).options.show_type_infer_variable_judgement
-
-let _log kw (f : unit -> unit) =
-  if List.exists (String.equal kw) (get_log_tags ()) then f ()
