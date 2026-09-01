@@ -52,7 +52,7 @@ let layout_prop_
     | Or [ p1; p2 ] -> (spf "%s%s%s" (p_layout p1) sym_or (p_layout p2), false)
     | And ps -> (spf "%s" @@ List.split_by sym_and p_layout ps, false)
     | Or ps -> (spf "%s" @@ List.split_by sym_or p_layout ps, false)
-    | Not p -> (spf "%s (%s)" sym_not (fst (layout p)), true)
+    | Not p -> (spf "%s%s" sym_not (p_layout p), true)
     | Iff (p1, p2) -> (spf "%s %s %s" (p_layout p1) sym_iff (p_layout p2), false)
     | Ite (p1, p2, p3) ->
         ( spf "if %s then %s else %s"
