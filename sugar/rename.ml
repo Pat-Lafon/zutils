@@ -1,78 +1,38 @@
-open Assertion
 open SugarAux
 
-(* name := string _ int *)
-type name = string * int option
-
+(* Source names use a single [split_char]; renamer-issued names carry a doubled
+   one ([tag_sep]), so the two never collide and [is_tagged] can tell them apart. *)
 let split_char = '_'
+let tag_sep = spf "%c%c" split_char split_char
+let counter = ref 0
 
-let name_of_string name =
-  let l = List.rev @@ String.split_on_char split_char name in
-  match l with
-  | [] -> _die_with [%here] (Printf.sprintf "not a well-formed name: %s" name)
-  | id :: rest -> (
-      let rest = List.rev rest in
-      match int_of_string_opt id with
-      | None -> (name, None)
-      | Some i ->
-          let rest = String.concat (spf "%c" split_char) rest in
-          (rest, Some i))
+let gensym () =
+  let n = !counter in
+  incr counter;
+  n
 
-let name_to_string (sname, id) =
-  match id with None -> sname | Some i -> spf "%s%c%i" sname split_char i
-
-let _unique tab (sname, id) =
-  let max_one =
-    match Hashtbl.find_opt tab sname with
-    | Some n -> (
-        match id with
-        | None -> Some n
-        | Some id -> if id < n then Some n else Some id)
-    | None -> id
+let root_of name =
+  let n = String.length name and s = String.length tag_sep in
+  let rec last_tag i =
+    if i < 0 then None
+    else if name.[i] = split_char && name.[i + 1] = split_char then Some i
+    else last_tag (i - 1)
   in
-  match max_one with
-  | Some n ->
-      Hashtbl.replace tab sname (n + 1);
-      (sname, Some n)
-  | None ->
-      Hashtbl.add tab sname 0;
-      (sname, None)
-(*     let () = *)
-(*       match id with *)
-(*       | None -> () *)
-(*       | Some id -> *)
-(*         if id >= n then Hashtbl.replace tab sname (n + 1); *)
-(*           _assert [%here] *)
-(*             (spf "seen id (%i) should less than next available one (%i) in %s" *)
-(*                id n sname) *)
-(*             (id < n) *)
-(*     in *)
-(*     Hashtbl.replace tab sname (n + 1); *)
-(*     (sname, Some n) *)
-(* | None -> *)
-(*     let () = *)
-(*       match id with *)
-(*       | None -> () *)
-(*       | Some id -> *)
-(*           _assert [%here] *)
-(*             (spf *)
-(*                "seen id (%i) should less than next available one (None) in %s" *)
-(*                id sname) *)
-(*             false *)
-(*     in *)
-(*     Hashtbl.add tab sname 0; *)
-(*     (sname, None) *)
+  match last_tag (n - s) with
+  | Some i ->
+      let tail = String.sub name (i + s) (n - i - s) in
+      if
+        tail <> ""
+        && String.for_all (function '0' .. '9' -> true | _ -> false) tail
+      then String.sub name 0 i
+      else name
+  | None -> name
 
-let mk_unique tab name = name_to_string @@ _unique tab @@ name_of_string name
+let is_tagged name = root_of name <> name
 
-(* NOTE: store the next available name lazily *)
-let universal_type_var : (string, int) Hashtbl.t = Hashtbl.create 100
-let universal_var : (string, int) Hashtbl.t = Hashtbl.create 1000
-let _unique_type_var sname = _unique universal_type_var sname
-let _unique_var sname = _unique universal_var sname
-let unique_type_var name = mk_unique universal_type_var name
-let unique_var name = mk_unique universal_var name
-let dummy_var () = unique_var "dummyVar"
-let dummy_type_var () = unique_var "dummyTypeVar"
-let fresh_type_var () = unique_var "tv"
-let fresh_var () = unique_var "tmp"
+(* strip any existing tag before re-tagging, so [unique (unique x)] stays [x__n],
+   not [x__n__m] *)
+let unique name = spf "%s%s%i" (root_of name) tag_sep (gensym ())
+let dummy_var () = unique "dummyVar"
+let fresh_type_var () = unique "tv"
+let fresh_var () = unique "tmp"

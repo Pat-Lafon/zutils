@@ -606,11 +606,11 @@ let fresh_name_prop =
     | Or es -> smart_or (List.map aux es)
     | Iff (e1, e2) -> Iff (aux e1, aux e2)
     | Forall { qv; body } ->
-        let qv' = qv#->Rename.unique_var in
+        let qv' = qv#->Rename.unique in
         let body = subst_prop_instance qv.x (AVar qv') body in
         Forall { qv = qv'; body = aux body }
     | Exists { qv; body } ->
-        let qv' = qv#->Rename.unique_var in
+        let qv' = qv#->Rename.unique in
         let body = subst_prop_instance qv.x (AVar qv') body in
         Exists { qv = qv'; body = aux body }
   in

@@ -77,17 +77,7 @@ let instantiate_quantified_bool =
           let body_true =
             fresh_name_prop @@ subst_prop_instance qv.x mk_lit_true body
           in
-          let body_false =
-            fresh_name_prop @@ subst_prop_instance qv.x mk_lit_false body
-          in
-          (* let () = Printf.printf "body_true: %s\n" @@ Front.layout body_true in *)
-          (* let () = *)
-          (*   Printf.printf "body_false: %s\n" @@ Front.layout body_false *)
-          (* in *)
-          (* let () = *)
-          (*   Printf.printf "or: %s\n" *)
-          (*   @@ Front.layout (smart_or [ body_true; body_false ]) *)
-          (* in *)
+          let body_false = subst_prop_instance qv.x mk_lit_false body in
           simpl_eq_in_prop (smart_or [ body_true; body_false ])
         else Exists { body; qv }
     | Forall { body; qv } ->
@@ -96,9 +86,7 @@ let instantiate_quantified_bool =
           let body_true =
             fresh_name_prop @@ subst_prop_instance qv.x mk_lit_true body
           in
-          let body_false =
-            fresh_name_prop @@ subst_prop_instance qv.x mk_lit_false body
-          in
+          let body_false = subst_prop_instance qv.x mk_lit_false body in
           let () =
             ZUtilsLog.simpl_prop @@ fun () ->
             Printf.printf "body: %s\n" @@ Front.layout body;
