@@ -43,7 +43,7 @@ let layout_prop_
       _;
     } =
   let rec layout = function
-    | Lit lit -> (layout_typed_lit_mp layout_mp lit, false)
+    | Lit lit -> (layout_typed_lit_mp layout_mp lit, true)
     | Implies (p1, p2) ->
         (spf "%s %s %s" (p_layout p1) sym_implies (p_layout p2), false)
     | And [ p ] -> layout p

@@ -206,7 +206,7 @@ let simpl_query_by_eq (query : Nt.t prop) =
                the equation as a constraint and inlines via unification. *)
             let is_accessor_app =
               match lit.x with
-              | AAppOp (op, _) -> Dtencoding.is_dt_accessor op.x
+              | AAppOp (op, _) -> Z3decls.is_dt_accessor op.x
               | _ -> false
             in
             if is_accessor_app then Exists { body; qv }

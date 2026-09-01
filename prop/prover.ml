@@ -1,6 +1,5 @@
 open Z3
 open Solver
-open Goal
 open Sugar
 open Syntax
 open ZUtilsConfig
@@ -17,13 +16,12 @@ let layout_smt_result = function
   | Unknown None -> "unknown"
   | Unknown (Some r) -> Printf.sprintf "unknown(%s)" r
 
-type prover = { ax_sys : laxiom_system; env : Dtencoding.z3_env }
+type prover = { ax_sys : laxiom_system; env : Z3decls.z3_env }
 
 let mk_prover () =
-  let ctx = mk_context [ ("model", "true"); ("proof", "false") ] in
-  let env = Dtencoding.register_all_for_ctx ctx Z3aux.tp_to_sort in
-  let ax_sys = Axiom.emp in
-  { env; ax_sys }
+  let ctx = mk_context [] in
+  let env = Z3aux.mk_env ctx in
+  { env; ax_sys = Axiom.emp }
 
 let _prover : prover option ref = ref None
 
@@ -62,9 +60,9 @@ let update_axioms axioms =
   let p = get_prover () in
   _prover := Some { p with ax_sys = Axiom.add_laxioms p.ax_sys axioms }
 
-let serialize_expr (env : Dtencoding.z3_env) (query : Expr.expr) : string =
+let serialize (env : Z3decls.z3_env) (exprs : Expr.expr list) : string =
   let solver = mk_solver env.ctx None in
-  Solver.add solver [ query ];
+  Solver.add solver exprs;
   Solver.to_string solver
 
 let dump_queries entries =
@@ -80,7 +78,7 @@ let dump_queries entries =
       Printf.eprintf "Dumped SMT query to %s\n" path)
     entries
 
-let run_z3_binary ~extra_bodies solver : smt_result * string option =
+let run_z3_binary ~extra_bodies axiom_body : smt_result * string option =
   let timeout =
     match !_timeout with Some t -> t | None -> get_prover_timeout_bound ()
   in
@@ -99,8 +97,6 @@ let run_z3_binary ~extra_bodies solver : smt_result * string option =
         "(set-option :smt.ematching false)\n(set-option :smt.mbqi true)\n"
       else ""
     in
-    (* [(get-info :reason-unknown)] is appended unconditionally; after sat/unsat z3
-       answers `(:reason-unknown "")`. *)
     Printf.sprintf
       "%s%s(set-option :timeout %d)\n\
        %s%s\n\
@@ -108,7 +104,6 @@ let run_z3_binary ~extra_bodies solver : smt_result * string option =
        (get-info :reason-unknown)\n"
       dt mq timeout rlimit_opt body
   in
-  let axiom_body = Solver.to_string solver in
   let entries =
     [
       { Portfolio.label = "axiom"; query = wrap axiom_body };
@@ -139,23 +134,15 @@ let all_axioms () =
 let check_sat ~axioms ?(extra_bodies = []) prop =
   incr query_counter;
   let { env; _ } = get_prover () in
-  let ctx = env.ctx in
   let z3_axioms = List.map (Propencoding.to_z3 env) axioms in
   let query = Propencoding.to_z3 env prop in
   let _ =
     ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>QUERY:@}\n%s\n" (Expr.to_string query)
   in
-  let goal = mk_goal ctx true false false in
-  Goal.add goal (z3_axioms @ [ query ]);
-  let _ =
-    ZUtilsLog.queries @@ fun _ ->
-    Pp.printf "@{<bold>Goal:@}\n%s\n" (Goal.to_string goal)
-  in
-  let solver = mk_solver ctx None in
-  Solver.add solver (get_formulas goal);
+  let body = serialize env (z3_axioms @ [ query ]) in
   let time_t, (res, won) =
-    Sugar.clock (fun () -> run_z3_binary ~extra_bodies solver)
+    Sugar.clock (fun () -> run_z3_binary ~extra_bodies body)
   in
   let () =
     ZUtilsLog.stat @@ fun _ ->

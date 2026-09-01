@@ -36,7 +36,7 @@ let unique_quantifiers prop =
   in
   match aux prop with None -> false | Some _ -> true
 
-let to_z3 (env : Dtencoding.z3_env) prop =
+let to_z3 (env : Z3decls.z3_env) prop =
   let ctx = env.ctx in
   let rec aux prop =
     match prop with

@@ -11,7 +11,7 @@ let op_dt_key (ty : Nt.t) : string =
   | t :: _, _ -> Nt.layout t
   | [], _ -> Nt.layout ty
 
-let rec typed_lit_to_z3 (env : Dtencoding.z3_env) lit =
+let rec typed_lit_to_z3 (env : Z3decls.z3_env) lit =
   let ctx = env.ctx in
   let () =
     ZUtilsLog.z3encode @@ fun () ->
@@ -89,13 +89,13 @@ let rec typed_lit_to_z3 (env : Dtencoding.z3_env) lit =
       | opname, args ->
           let dt_key = op_dt_key op.ty in
           let func =
-            match Dtencoding.z3_data_type_func_lookup env dt_key opname with
+            match Z3decls.z3_data_type_func_lookup env dt_key opname with
             | Some f -> f
             | None -> (
                 (* Method predicate: recursive def while the functional entry is
                    being serialized (the map is populated), else uninterpreted
                    (axiom encoding — the map is empty). *)
-                match Func_encoding.lookup env.rec_func_map opname with
+                match Z3decls.rec_func_lookup env opname with
                 | Some fd -> fd
                 | None ->
                     let argsty, retty = Nt.destruct_arr_tp op.ty in
