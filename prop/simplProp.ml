@@ -198,12 +198,9 @@ let simpl_query_by_eq (query : Nt.t prop) =
         match find_eq_lit_in_prop qv.x body with
         | None -> Exists { body; qv }
         | Some lit ->
-            (* Refuse to inline when the defining equation is a datatype
-               accessor application (e.g. `qv == left v`). The Lean dump
-               path needs the bridging existential so Lean's `Some`
-               coercion reconciles its Option-wrapped accessor types
-               with Cobb's raw view in `normal_typing.ml`. Z3 still sees
-               the equation as a constraint and inlines via unification. *)
+            (* Leave the binder: an accessor is partial, so the Lean
+               export gives it an [Option t] return and inlining would
+               put an [Option t] where the body wants [t] (When uninlined, Lean is able to add a coercion via ==). Z3 inlines this away *)
             let is_accessor_app =
               match lit.x with
               | AAppOp (op, _) -> Z3decls.is_dt_accessor op.x
