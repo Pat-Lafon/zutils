@@ -46,15 +46,15 @@ let z3_tt_name = "tt"
 let mk_some_name ty = spf "Some_%s" (layout_smtty ty)
 let mk_none_name ty = spf "None_%s" (layout_smtty ty)
 
-let rec smt_tp_to_sort (env : Dtencoding.z3_env) t =
+let rec smt_tp_to_sort (env : Z3decls.z3_env) t =
   let ctx = env.ctx in
   match t with
   (* | Smt_enum { enum_name; enum_elems } -> *)
   (*     get_z3_enum_type ctx (enum_name, enum_elems) *)
   | Smt_Uninterp name -> (
-      match Dtencoding.z3_data_type_get env name with
+      match Z3decls.z3_data_type_get env name with
       | Some dt -> dt.sort
-      | None when Hashtbl.mem Dtencoding.decl_registry name ->
+      | None when Z3decls.is_registered name ->
           _die_with [%here]
             (spf
                "registered datatype %s has no built sort in this ctx's \
@@ -105,11 +105,12 @@ let rec smt_tp_to_sort (env : Dtencoding.z3_env) t =
 
 let int_to_z3 ctx i = mk_numeral_int ctx i (Integer.mk_sort ctx)
 let bool_to_z3 ctx b = if b then mk_true ctx else mk_false ctx
-let str_to_z3 ctx str = Seq.mk_string ctx str
-let char_to_z3 ctx char = Seq.mk_char ctx (Char.code char)
 
-let float_to_z3 (env : Dtencoding.z3_env) float =
+let float_to_z3 (env : Z3decls.z3_env) float =
   FloatingPoint.mk_numeral_f env.ctx float (smt_tp_to_sort env Smt_Float64)
+
+let char_to_z3 ctx char = Seq.mk_char ctx (Char.code char)
+let str_to_z3 ctx str = Seq.mk_string ctx str
 
 (* No memo table: Z3 hash-conses sorts within a ctx, so rebuilding one on each call
    returns the same sort for only the FFI cost. A non-ctx-keyed memo (the old one)
@@ -119,12 +120,12 @@ let tp_to_sort env t = smt_tp_to_sort env (to_smtty t)
 (* A registered datatype that hasn't been built into the env's [datatype_map]
    must crash rather than fall through to an uninterpreted sort. *)
 let%test "tp_to_sort dies on a registered datatype missing from datatype_map" =
-  let saved = Hashtbl.copy Dtencoding.decl_registry in
-  Hashtbl.reset Dtencoding.decl_registry;
-  Dtencoding.register_decl
+  let saved = !Z3decls.decl_registry in
+  Z3decls.decl_registry := [];
+  Z3decls.register_decl
     { dt_name = "boxty"; ctors = [ { cname = "box"; fields = [] } ] };
   let ctx = Z3.mk_context [] in
-  let env : Dtencoding.z3_env =
+  let env : Z3decls.z3_env =
     { ctx; datatype_map = Hashtbl.create 1; rec_func_map = Hashtbl.create 1 }
   in
   let raised =
@@ -133,11 +134,10 @@ let%test "tp_to_sort dies on a registered datatype missing from datatype_map" =
       false
     with Failure _ -> true
   in
-  Hashtbl.reset Dtencoding.decl_registry;
-  Hashtbl.iter (Hashtbl.replace Dtencoding.decl_registry) saved;
+  Z3decls.decl_registry := saved;
   raised
 
-let z3func (env : Dtencoding.z3_env) funcname inptps outtp =
+let z3func (env : Z3decls.z3_env) funcname inptps outtp =
   (* let () = Printf.printf "[%s]funcname: %s\n" __FILE__ funcname in *)
   FuncDecl.mk_func_decl env.ctx
     (Symbol.mk_string env.ctx funcname)
@@ -171,7 +171,7 @@ let rec has_uninterpreted_app (e : expr) : bool =
 (*   let idx = Integer.mk_const_s ctx idxname in *)
 (*   array_head_ ctx (arrname, idx) *)
 
-let tpedvar_to_z3 (env : Dtencoding.z3_env) (tp, name) =
+let tpedvar_to_z3 (env : Z3decls.z3_env) (tp, name) =
   Expr.mk_const_s env.ctx name @@ tp_to_sort env tp
 
 let make_forall ctx qv body =
@@ -216,21 +216,162 @@ let%test_module "datatype encoding" =
             ];
         }
 
-    let%test "a list datatype encodes as a recursive sort" =
-      let apply name args =
-        match func_lookup ctx name with
-        | Some fd -> FuncDecl.apply fd args
-        | None -> _die_with [%here] (spf "%s is not registered" name)
+(* open Zdatatype *)
+
+(* let bound = 4 *)
+
+(* let get_preds_interp model impv = *)
+(*   match impv with *)
+(*   | V1 -> List.init bound (fun x -> x) *)
+(*   | V2 -> ( *)
+(*       let funcs = Model.get_func_decls model in *)
+(*       let get func = *)
+(*         match Model.get_func_interp model func with *)
+(*         | None -> raise @@ failwith "never happen" *)
+(*         | Some interp -> *)
+(*             let bounds = *)
+(*               List.fold_left *)
+(*                 (fun l e -> *)
+(*                   Model.FuncInterp.FuncEntry.( *)
+(*                     List.map *)
+(*                       (fun bound -> *)
+(*                         if Arithmetic.is_int_numeral bound then *)
+(*                           int_of_string *)
+(*                           @@ Arithmetic.Integer.numeral_to_string bound *)
+(*                         else raise @@ failwith "bad bound") *)
+(*                       (get_args e)) *)
+(*                   @ l) *)
+(*                 [] *)
+(*                 (Model.FuncInterp.get_entries interp) *)
+(*             in *)
+(*             let bounds = List.remove_duplicates bounds in *)
+(*             (\* let _ = printf "%s\n" (IntList.to_string bounds) in *\) *)
+(*             bounds *)
+(*       in *)
+(*       let bounds = *)
+(*         List.remove_duplicates @@ List.flatten @@ List.map get funcs *)
+(*       in *)
+(*       match IntList.max_opt bounds with *)
+(*       | None -> [ 0 ] *)
+(*       | Some ma -> (ma + 1) :: bounds) *)
+
+(* let neg_avoid_timeout_constraint ctx vars body = *)
+(*   if List.length vars == 0 then body *)
+(*   else *)
+(*     let vars = List.map (tpedvar_to_z3 ctx) vars in *)
+(*     let is = List.init bound (fun i -> Arithmetic.Integer.mk_numeral_i ctx i) in *)
+(*     let ps = *)
+(*       List.map *)
+(*         (fun x -> *)
+(*           Boolean.mk_or ctx (List.map (fun i -> Boolean.mk_eq ctx x i) is)) *)
+(*         vars *)
+(*     in *)
+(*     Boolean.mk_and ctx [ Boolean.mk_and ctx ps; body ] *)
+
+(* let avoid_timeout_constraint ctx fv body = *)
+(*   let is = List.init bound (fun i -> Arithmetic.Integer.mk_numeral_i ctx i) in *)
+(*   let ps = *)
+(*     List.map *)
+(*       (fun x -> *)
+(*         Boolean.mk_or ctx (List.map (fun i -> Boolean.mk_eq ctx x i) is)) *)
+(*       fv *)
+(*   in *)
+(*   Boolean.mk_implies ctx (Boolean.mk_and ctx ps) body *)
+
+(* let make_forall ctx forallvars body impv = *)
+(*   let body = *)
+(*     match impv with *)
+(*     | V1 -> avoid_timeout_constraint ctx forallvars body *)
+(*     | V2 -> body *)
+(*   in *)
+(*   if List.length forallvars == 0 then body *)
+(*   else *)
+(*     Quantifier.expr_of_quantifier *)
+(*       (Quantifier.mk_forall_const ctx forallvars body (Some 1) [] [] None None) *)
+
+(* let make_exists ctx forallvars body = *)
+(*   if List.length forallvars == 0 then body *)
+(*   else *)
+(*     Quantifier.expr_of_quantifier *)
+(*       (Quantifier.mk_exists_const ctx forallvars body (Some 1) [] [] None None) *)
+
+(* let quanti_head ctx forallvars existsvars body = *)
+(*   let p = *)
+(*     if List.length existsvars == 0 then body *)
+(*     else *)
+(*       Quantifier.expr_of_quantifier *)
+(*         (Quantifier.mk_exists_const ctx existsvars body (Some 1) [] [] None None) *)
+(*   in *)
+(*   if List.length forallvars == 0 then p *)
+(*   else *)
+(*     Quantifier.expr_of_quantifier *)
+(*       (Quantifier.mk_forall_const ctx forallvars p (Some 1) [] [] None None) *)
+
+(* let encode_ds_var ctx sort_name var_name = *)
+(*   let sort = Sort.mk_uninterpreted ctx (Symbol.mk_string ctx sort_name) in *)
+(*   let value_func_name = Symbol.mk_string ctx (sort_name ^ "_value") in *)
+(*   let value_func = *)
+(*     FuncDecl.mk_func_decl ctx value_func_name *)
+(*       [ Z3.Arithmetic.Integer.mk_sort ctx ] *)
+(*       sort *)
+(*   in *)
+(*   let index = Integer.mk_const_s ctx var_name in *)
+(*   Z3.FuncDecl.apply value_func [ index ] *)
+
+open Z3decls
+
+(* Pull the func_decls Z3 built into the sort and pair each with the name we gave
+   it here. *)
+let name_sort_decls sort (ctors : ctor_spec list) : z3_data_type =
+  let constructors =
+    List.combine
+      (List.map (fun c -> c.cname) ctors)
+      (Datatype.get_constructors sort)
+  in
+  let recognizers =
+    List.combine
+      (List.map (fun c -> recognizer_name c.cname) ctors)
+      (Datatype.get_recognizers sort)
+  in
+  let accessors =
+    List.concat
+      (List.map2
+         (fun c fds -> List.combine (List.map (fun f -> f.fname) c.fields) fds)
+         ctors
+         (Datatype.get_accessors sort))
+  in
+  { sort; constructors; recognizers; accessors }
+
+(* A field of the datatype's own type is a forward reference to the sort being
+   built, which Z3 spells as a [None] sort with sort_ref 0. *)
+let mk_env ctx : z3_env =
+  let env =
+    { ctx; datatype_map = Hashtbl.create 5; rec_func_map = Hashtbl.create 5 }
+  in
+  let add_sort decl =
+    let build_constructor ctor =
+      let field_names =
+        List.map (fun f -> Symbol.mk_string ctx f.fname) ctor.fields
       in
-      let l = Expr.mk_const_s ctx "l" (tp_to_sort ctx ilist) in
-      let cell = apply "cons" [ int_to_z3 ctx 1; l ] in
-      let entails e =
-        let solver = Z3.Solver.mk_solver ctx None in
-        Z3.Solver.add solver [ mk_not ctx e ];
-        Z3.Solver.check solver [] = Z3.Solver.UNSATISFIABLE
+      let sorts =
+        List.map
+          (fun f ->
+            match f.ftype with
+            | Ty_constructor (n, []) when n = decl.dt_name -> None
+            | ty -> Some (tp_to_sort env ty))
+          ctor.fields
       in
-      entails (apply "is_cons" [ cell ])
-      && entails (mk_eq ctx (apply "head" [ cell ]) (int_to_z3 ctx 1))
-      && entails (mk_eq ctx (apply "tail" [ cell ]) l)
-      && entails (mk_not ctx (mk_eq ctx cell l))
-  end)
+      Datatype.mk_constructor_s ctx ctor.cname
+        (Symbol.mk_string ctx (recognizer_name ctor.cname))
+        field_names sorts
+        (List.map (fun _ -> 0) ctor.fields)
+    in
+    let sort =
+      Datatype.mk_sort_s ctx decl.dt_name
+        (List.map build_constructor decl.ctors)
+    in
+    Hashtbl.replace env.datatype_map decl.dt_name
+      (name_sort_decls sort decl.ctors)
+  in
+  List.iter add_sort (registered_decls ());
+  env

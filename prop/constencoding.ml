@@ -10,15 +10,15 @@ let get_idx_in_list x l =
   in
   aux 0 l
 
-let constant_to_z3 (env : Dtencoding.z3_env) c =
+let constant_to_z3 (env : Z3decls.z3_env) c =
   let ctx = env.ctx in
   let aux c =
     match c with
     | U -> Enumeration.get_const (tp_to_sort env Nt.unit_ty) 0
     | B b -> bool_to_z3 ctx b
     | I i -> int_to_z3 ctx i
-    | S s -> str_to_z3 ctx s
     | C c -> char_to_z3 ctx c
+    | S s -> str_to_z3 ctx s
     | F f -> float_to_z3 env f
   in
   aux c

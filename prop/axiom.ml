@@ -13,16 +13,13 @@ let add_laxiom asys (name, prop) =
 let add_laxioms asys l = List.fold_left add_laxiom asys l
 
 let find_axioms_by_preds asys query_preds =
-  let m =
-    StrMap.filter
-      (fun name { preds; _ } ->
-        ( ZUtilsLog.axiom @@ fun () ->
-          Pp.printf "@{<bold>in %s@}: %s\n" name
-            (StrList.to_string @@ StrSet.to_list preds) );
-        StrSet.subset preds query_preds)
-      asys
-  in
-  StrMap.to_key_list m
+  StrMap.filter
+    (fun name { preds; _ } ->
+      ( ZUtilsLog.axiom @@ fun () ->
+        Pp.printf "@{<bold>in %s@}: %s\n" name
+          (StrList.to_string @@ StrSet.to_list preds) );
+      StrSet.subset preds query_preds)
+    asys
 
 (* Single pass, not a fixpoint: a rule fires only if its key is already in [ps]
    when reached, so each rule must list its full transitive closure — under-listing
@@ -163,17 +160,8 @@ let find_axioms asys query =
   ( ZUtilsLog.axiom @@ fun () ->
     Pp.printf "@{<bold>query preds@}: %s\n"
       (StrList.to_string @@ StrSet.to_list query_preds) );
-  let axiom2 = find_axioms_by_preds asys query_preds in
-  let axiom_set = StrSet.of_list axiom2 in
-  let axioms = StrSet.to_list axiom_set in
-  let () =
-    ZUtilsLog.axiom @@ fun () ->
-    Pp.printf "@{<bold>Axioms by pred: @} %s\n" @@ StrList.to_string axiom2
-  in
-  let () =
-    ZUtilsLog.axiom @@ fun () ->
-    Pp.printf "@{<bold>Axioms: @} %s\n" @@ StrList.to_string axioms
-  in
-  let props = StrMap.filter (fun name _ -> StrSet.mem name axiom_set) asys in
-  let axioms = gather_indicator_types query (StrMap.to_kv_list props) in
-  axioms
+  let props = find_axioms_by_preds asys query_preds in
+  ( ZUtilsLog.axiom @@ fun () ->
+    Pp.printf "@{<bold>Axioms: @} %s\n"
+      (StrList.to_string @@ StrMap.to_key_list props) );
+  gather_indicator_types query (StrMap.to_kv_list props)
