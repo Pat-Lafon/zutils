@@ -1,6 +1,7 @@
 {
     "zutils": {
-        "log_tags": ["axiom", "queries"]
+        "log_tags": ["axiom", "queries"],
+        "pred_extension_rules": [["hd", ["list_mem"]]]
     },
     "typechecker": {
         "prim_path": {
