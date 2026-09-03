@@ -21,9 +21,8 @@ let find_axioms_by_preds asys query_preds =
       StrSet.subset preds query_preds)
     asys
 
-(* Single pass, not a fixpoint: a rule fires only if its key is already in [ps]
-   when reached, so each rule must list its full transitive closure — under-listing
-   silently under-extends. *)
+(* One pass in config order: a rule adds its predicates only when its key is
+   already present at its turn, so a rule lists every predicate it implies. *)
 let pred_extension ps =
   let rules =
     List.map
