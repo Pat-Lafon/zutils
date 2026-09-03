@@ -24,18 +24,19 @@ let find_axioms_by_preds asys query_preds =
   in
   StrMap.to_key_list m
 
-let rules = [ (StrSet.of_list [ "hd" ], [ "list_mem" ]) ]
-
+(* One pass in config order: a rule adds its predicates only when its key is
+   already present at its turn, so a rule lists every predicate it implies. *)
 let pred_extension ps =
-  let ps =
-    List.fold_left
-      (fun ps (rname, new_preds) ->
-        let new_preds = if StrSet.subset rname ps then new_preds else [] in
-        let ps = StrSet.add_seq (List.to_seq new_preds) ps in
-        ps)
-      ps rules
+  let rules =
+    List.map
+      (fun (k, vs) -> (StrSet.singleton k, vs))
+      (ZUtilsConfig.get_pred_extension_rules ())
   in
-  ps
+  List.fold_left
+    (fun ps (rname, new_preds) ->
+      if StrSet.subset rname ps then StrSet.add_seq (List.to_seq new_preds) ps
+      else ps)
+    ps rules
 
 (** instantiate_poly_axioms *)
 
