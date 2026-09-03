@@ -2,7 +2,7 @@
  (name sugar)
  (public_name zutils.sugar)
  (wrapped true)
- (modules assertion sugarAux json zlog rename pp typed sugar)
+ (modules assertion sugarAux json rename pp typed sugar)
  (preprocess
   (pps
    ppx_here
@@ -15,4 +15,4 @@
    ppx_deriving.eq
    ppx_deriving.ord
    ppx_deriving_yojson))
- (libraries zdatatype core yojson dolog spectrum ppx_here))
+ (libraries zdatatype core yojson spectrum ppx_here))
