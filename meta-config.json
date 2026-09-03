@@ -1,6 +1,6 @@
 {
     "zutils": {
-        "log_tags": ["axiom", "queries", "auxtyping", "preprocess", "typing", "result", "model", "never-use"],
+        "log_tags": ["axiom", "queries"],
         "pred_extension_rules": [["hd", ["list_mem"]]]
     },
     "typechecker": {
