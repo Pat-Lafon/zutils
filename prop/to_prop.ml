@@ -39,10 +39,11 @@ let layout_prop_
       sym_forall;
       sym_exists;
       layout_typedid;
+      layout_mp;
       _;
     } =
   let rec layout = function
-    | Lit lit -> (layout_typed_lit lit, true)
+    | Lit lit -> (layout_typed_lit_mp layout_mp lit, true)
     | Implies (p1, p2) ->
         (spf "%s %s %s" (p_layout p1) sym_implies (p_layout p2), false)
     | And [ p ] -> layout p
@@ -151,7 +152,5 @@ let prop_of_expr expr =
 
 let layout_prop__raw x = string_of_expression @@ prop_to_expr x
 let layout_prop expr = layout_prop_ psetting expr
-let layout_propRaw expr = layout_prop_ rawsetting expr
-let layout_prop_to_coq expr = layout_prop_ coqsetting expr
 let layout = layout_prop
 let of_expr = prop_of_expr
