@@ -71,11 +71,21 @@ let z3_tt_name = "tt"
 let mk_some_name ty = spf "Some_%s" (layout_smtty ty)
 let mk_none_name ty = spf "None_%s" (layout_smtty ty)
 
-let rec smt_tp_to_sort ctx t =
+let rec smt_tp_to_sort (env : Z3decls.z3_env) t =
+  let ctx = env.ctx in
   match t with
   (* | Smt_enum { enum_name; enum_elems } -> *)
   (*     get_z3_enum_type ctx (enum_name, enum_elems) *)
-  | Smt_Uninterp name -> Sort.mk_uninterpreted_s ctx name
+  | Smt_Uninterp name -> (
+      match Z3decls.z3_data_type_get env name with
+      | Some dt -> dt.sort
+      | None when Z3decls.is_registered name ->
+          _die_with [%here]
+            (spf
+               "registered datatype %s has no built sort in this ctx's \
+                datatype_map"
+               name)
+      | None -> Sort.mk_uninterpreted_s ctx name)
   (* | Smt_Uninterp _ -> Integer.mk_sort ctx *)
   | Smt_Unit -> Enumeration.mk_sort_s ctx z3_unit_name [ z3_tt_name ]
   | Smt_Int -> Integer.mk_sort ctx
@@ -94,7 +104,7 @@ let rec smt_tp_to_sort ctx t =
       let constructor_some =
         Datatype.mk_constructor_s ctx some_name (mk_recog ctx some_name)
           [ Symbol.mk_string ctx (spf "get_%s" some_name) ]
-          [ Some (smt_tp_to_sort ctx smtnt) ]
+          [ Some (smt_tp_to_sort env smtnt) ]
           [ 0 ]
       in
       Datatype.mk_sort_s ctx option_name [ constructor_none; constructor_some ]
@@ -106,7 +116,7 @@ let rec smt_tp_to_sort ctx t =
       let n = List.length l in
       let sym = Symbol.mk_string ctx tuple_name in
       let syms = List.init n (fun i -> tuple_field ctx tuple_name i) in
-      let l = List.map (smt_tp_to_sort ctx) l in
+      let l = List.map (smt_tp_to_sort env) l in
       Tuple.mk_sort ctx sym syms l
   | Smt_record fields ->
       let record_name = layout_smtty t in
@@ -116,7 +126,7 @@ let rec smt_tp_to_sort ctx t =
           (spf "_constr%s" record_name)
           (mk_recog ctx record_name)
           (List.map (fun x -> Symbol.mk_string ctx x.x) fields)
-          (List.map (fun x -> Some (smt_tp_to_sort ctx x.ty)) fields)
+          (List.map (fun x -> Some (smt_tp_to_sort env x.ty)) fields)
           (List.init (List.length fields) (fun i -> i))
       in
       Datatype.mk_sort_s ctx record_name [ constructor ]
@@ -124,37 +134,55 @@ let rec smt_tp_to_sort ctx t =
 let int_to_z3 ctx i = mk_numeral_int ctx i (Integer.mk_sort ctx)
 let bool_to_z3 ctx b = if b then mk_true ctx else mk_false ctx
 
-let float_to_z3 ctx float =
-  FloatingPoint.mk_numeral_f ctx float (smt_tp_to_sort ctx Smt_Float64)
+let float_to_z3 (env : Z3decls.z3_env) float =
+  FloatingPoint.mk_numeral_f env.ctx float (smt_tp_to_sort env Smt_Float64)
 
 let char_to_z3 ctx char = Seq.mk_char ctx (Char.code char)
 let str_to_z3 ctx str = Seq.mk_string ctx str
 
-module NTMap = Map.Make (struct
-  type t = nt
+(* No memo table: Z3 hash-conses sorts within a ctx, so rebuilding one on each call
+   returns the same sort for only the FFI cost. A non-ctx-keyed memo (the old one)
+   would hand a second ctx the first ctx's sort and raise a cross-ctx mismatch. *)
+let tp_to_sort env t = smt_tp_to_sort env (to_smtty t)
 
-  let compare = compare_nt
-end)
+(* A registered datatype that hasn't been built into the env's [datatype_map]
+   must crash rather than fall through to an uninterpreted sort. *)
+let%test "tp_to_sort dies on a registered datatype missing from datatype_map" =
+  let saved = !Z3decls.decl_registry in
+  Z3decls.decl_registry := [];
+  Z3decls.register_decl
+    { dt_name = "boxty"; ctors = [ { cname = "box"; fields = [] } ] };
+  let ctx = Z3.mk_context [] in
+  let env : Z3decls.z3_env =
+    { ctx; datatype_map = Hashtbl.create 1; rec_func_map = Hashtbl.create 1 }
+  in
+  let raised =
+    try
+      ignore (tp_to_sort env (Ty_constructor ("boxty", [])));
+      false
+    with Failure _ -> true
+  in
+  Z3decls.decl_registry := saved;
+  raised
 
-let smt_type_cache = ref NTMap.empty
-
-let tp_to_sort ctx t =
-  match NTMap.find_opt t !smt_type_cache with
-  | Some res -> res
-  | None ->
-      (* let () = *)
-      (*   Printf.printf "z3aux t: %s\n" @@ Sexplib.Sexp.to_string @@ sexp_of_t t *)
-      (* in *)
-      let res = smt_tp_to_sort ctx (to_smtty t) in
-      smt_type_cache := NTMap.add t res !smt_type_cache;
-      res
-
-let z3func ctx funcname inptps outtp =
+let z3func (env : Z3decls.z3_env) funcname inptps outtp =
   (* let () = Printf.printf "[%s]funcname: %s\n" __FILE__ funcname in *)
-  FuncDecl.mk_func_decl ctx
-    (Symbol.mk_string ctx funcname)
-    (List.map (tp_to_sort ctx) inptps)
-    (tp_to_sort ctx outtp)
+  FuncDecl.mk_func_decl env.ctx
+    (Symbol.mk_string env.ctx funcname)
+    (List.map (tp_to_sort env) inptps)
+    (tp_to_sort env outtp)
+
+(* A [define-fun-rec] measure reports [OP_RECURSIVE] and built-in/datatype ops carry their
+   own kind, so only [z3func]'s fallback matches [OP_UNINTERPRETED]. *)
+let rec has_uninterpreted_app (e : expr) : bool =
+  match AST.get_ast_kind (ast_of_expr e) with
+  | APP_AST ->
+      FuncDecl.get_decl_kind (get_func_decl e) = OP_UNINTERPRETED
+      || List.exists has_uninterpreted_app (get_args e)
+  | QUANTIFIER_AST ->
+      has_uninterpreted_app
+        (Quantifier.get_body (Quantifier.quantifier_of_expr e))
+  | _ -> false
 
 (* let arrname_arr arrname = arrname ^ "_a" *)
 (* let arrname_length arrname = arrname ^ "_length" *)
@@ -171,7 +199,8 @@ let z3func ctx funcname inptps outtp =
 (*   let idx = Integer.mk_const_s ctx idxname in *)
 (*   array_head_ ctx (arrname, idx) *)
 
-let tpedvar_to_z3 ctx (tp, name) = Expr.mk_const_s ctx name @@ tp_to_sort ctx tp
+let tpedvar_to_z3 (env : Z3decls.z3_env) (tp, name) =
+  Expr.mk_const_s env.ctx name @@ tp_to_sort env tp
 
 let make_forall ctx qv body =
   if List.length qv == 0 then body
@@ -296,3 +325,61 @@ let z3expr_to_bool v =
 (*   in *)
 (*   let index = Integer.mk_const_s ctx var_name in *)
 (*   Z3.FuncDecl.apply value_func [ index ] *)
+
+open Z3decls
+
+(* Pull the func_decls Z3 built into the sort and pair each with the name we gave
+   it here. *)
+let name_sort_decls sort (ctors : ctor_spec list) : z3_data_type =
+  let constructors =
+    List.combine
+      (List.map (fun c -> c.cname) ctors)
+      (Datatype.get_constructors sort)
+  in
+  let recognizers =
+    List.combine
+      (List.map (fun c -> recognizer_name c.cname) ctors)
+      (Datatype.get_recognizers sort)
+  in
+  let accessors =
+    List.concat
+      (List.map2
+         (fun c fds -> List.combine (List.map (fun f -> f.fname) c.fields) fds)
+         ctors
+         (Datatype.get_accessors sort))
+  in
+  { sort; constructors; recognizers; accessors }
+
+(* A field of the datatype's own type is a forward reference to the sort being
+   built, which Z3 spells as a [None] sort with sort_ref 0. *)
+let mk_env ctx : z3_env =
+  let env =
+    { ctx; datatype_map = Hashtbl.create 5; rec_func_map = Hashtbl.create 5 }
+  in
+  let add_sort decl =
+    let build_constructor ctor =
+      let field_names =
+        List.map (fun f -> Symbol.mk_string ctx f.fname) ctor.fields
+      in
+      let sorts =
+        List.map
+          (fun f ->
+            match f.ftype with
+            | Ty_constructor (n, []) when n = decl.dt_name -> None
+            | ty -> Some (tp_to_sort env ty))
+          ctor.fields
+      in
+      Datatype.mk_constructor_s ctx ctor.cname
+        (Symbol.mk_string ctx (recognizer_name ctor.cname))
+        field_names sorts
+        (List.map (fun _ -> 0) ctor.fields)
+    in
+    let sort =
+      Datatype.mk_sort_s ctx decl.dt_name
+        (List.map build_constructor decl.ctors)
+    in
+    Hashtbl.replace env.datatype_map decl.dt_name
+      (name_sort_decls sort decl.ctors)
+  in
+  List.iter add_sort (registered_decls ());
+  env

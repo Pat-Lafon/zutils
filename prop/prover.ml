@@ -22,7 +22,7 @@ let layout_smt_result = function
 
 type prover = {
   ax_sys : laxiom_system;
-  ctx : context;
+  env : Z3decls.z3_env;
   solver : solver;
   goal : goal;
 }
@@ -36,10 +36,11 @@ let _mk_prover timeout_bound =
         ("timeout", string_of_int timeout_bound);
       ]
   in
+  let env = Z3aux.mk_env ctx in
   let solver = mk_solver ctx None in
   let goal = mk_goal ctx true false false in
   let ax_sys = Axiom.emp in
-  { ctx; ax_sys; solver; goal }
+  { env; ax_sys; solver; goal }
 
 let mk_prover () = _mk_prover (get_prover_timeout_bound ())
 let _prover : prover option ref = ref None
@@ -47,7 +48,7 @@ let _prover : prover option ref = ref None
 let reset_solver_in_prover () =
   match !_prover with
   | Some p ->
-      let solver = mk_solver p.ctx None in
+      let solver = mk_solver p.env.ctx None in
       let p = { p with solver } in
       let () = _prover := Some p in
       p
@@ -64,14 +65,14 @@ let get_prover () =
       let () = _prover := Some p in
       p
 
-let get_ctx () = (get_prover ()).ctx
+let get_env () = (get_prover ()).env
 
 let update_axioms axioms =
-  let ctx = get_ctx () in
+  let env = get_env () in
   let axioms =
     List.map
       (fun (name, prop) ->
-        let z3_prop = Propencoding.to_z3 ctx prop in
+        let z3_prop = Propencoding.to_z3 env prop in
         (name, prop, z3_prop))
       axioms
   in
@@ -96,11 +97,11 @@ let handle_sat_result solver =
       | Some m -> SmtSat m)
 
 let check_sat prop =
-  let { goal; solver; ax_sys; ctx } = get_prover () in
+  let { goal; solver; ax_sys; env } = get_prover () in
   let axioms =
-    List.map (Propencoding.to_z3 ctx) @@ Axiom.find_axioms ax_sys prop
+    List.map (Propencoding.to_z3 env) @@ Axiom.find_axioms ax_sys prop
   in
-  let query = Propencoding.to_z3 ctx prop in
+  let query = Propencoding.to_z3 env prop in
   let _ =
     ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>QUERY:@}\n%s\n" (Expr.to_string query)
