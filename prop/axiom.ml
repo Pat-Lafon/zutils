@@ -4,17 +4,13 @@ open Syntax
 open Zdatatype
 open Sugar
 
-let add_laxiom asys (name, tasks, prop, z3_prop) =
-  let tasks = StrSet.of_list tasks in
+let add_laxiom asys (name, prop, z3_prop) =
   let preds = StrSet.of_list @@ get_fv_preds_from_prop prop in
-  if StrMap.mem name asys then _die [%here]
-  else StrMap.add name { tasks; preds; prop; z3_prop } asys
+  if StrMap.mem name asys then
+    _die_with [%here] (spf "duplicate axiom name: %s" name)
+  else StrMap.add name { preds; prop; z3_prop } asys
 
 let add_laxioms asys l = List.fold_left add_laxiom asys l
-
-let find_axioms_by_task asys task =
-  let m = StrMap.filter (fun _ { tasks; _ } -> StrSet.mem task tasks) asys in
-  StrMap.to_key_list m
 
 let find_axioms_by_preds asys query_preds =
   let m =
@@ -30,7 +26,7 @@ let find_axioms_by_preds asys query_preds =
 
 let rules = [ (StrSet.of_list [ "hd" ], [ "list_mem" ]) ]
 
-let pred_extension (_, ps) =
+let pred_extension ps =
   let ps =
     List.fold_left
       (fun ps (rname, new_preds) ->
@@ -173,28 +169,16 @@ let gather_indicator_types query axioms =
 
 let emp = StrMap.empty
 
-let find_axioms asys (task, query) =
+let find_axioms asys query =
   let query_preds = StrSet.of_list @@ get_fv_preds_from_prop query in
-  let query_preds = pred_extension (task, query_preds) in
-  let axiom1 =
-    match task with None -> [] | Some task -> find_axioms_by_task asys task
-  in
+  let query_preds = pred_extension query_preds in
   ( ZUtilsLog.axiom @@ fun () ->
-    Pp.printf "@{<bold>%s@}: %s\n"
-      (layout_option (fun x -> x) task)
+    Pp.printf "@{<bold>query preds@}: %s\n"
       (StrList.to_string @@ StrSet.to_list query_preds) );
-  let axiom2 = find_axioms_by_preds asys query_preds in
-  let axioms = List.slow_rm_dup String.equal (axiom1 @ axiom2) in
-  let () =
-    ZUtilsLog.axiom @@ fun () ->
-    Pp.printf "@{<bold>Axioms by pred: @} %s\n" @@ StrList.to_string axiom2
-  in
-  let () =
-    ZUtilsLog.axiom @@ fun () ->
-    Pp.printf "@{<bold>Axioms: @} %s\n" @@ StrList.to_string axioms
-  in
+  let axioms = find_axioms_by_preds asys query_preds in
+  ( ZUtilsLog.axiom @@ fun () ->
+    Pp.printf "@{<bold>Axioms: @} %s\n" @@ StrList.to_string axioms );
   let props =
     StrMap.filter (fun name _ -> List.exists (String.equal name) axioms) asys
   in
-  let axioms = gather_indicator_types query (StrMap.to_kv_list props) in
-  axioms
+  gather_indicator_types query (StrMap.to_kv_list props)

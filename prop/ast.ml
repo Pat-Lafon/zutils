@@ -110,11 +110,5 @@ open Zdatatype
 
 let unified_axiom_type_var = "a"
 
-type laxiom = {
-  tasks : StrSet.t;
-  preds : StrSet.t;
-  prop : Nt.t prop;
-  z3_prop : Z3.Expr.expr;
-}
-
+type laxiom = { preds : StrSet.t; prop : Nt.t prop; z3_prop : Z3.Expr.expr }
 type laxiom_system = laxiom StrMap.t
