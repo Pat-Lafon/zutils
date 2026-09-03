@@ -70,9 +70,9 @@ let update_axioms axioms =
   let ctx = get_ctx () in
   let axioms =
     List.map
-      (fun (name, tasks, prop) ->
+      (fun (name, prop) ->
         let z3_prop = Propencoding.to_z3 ctx prop in
-        (name, tasks, prop, z3_prop))
+        (name, prop, z3_prop))
       axioms
   in
   match !_prover with
@@ -95,10 +95,10 @@ let handle_sat_result solver =
       | None -> failwith "never happen"
       | Some m -> SmtSat m)
 
-let check_sat (task, prop) =
+let check_sat prop =
   let { goal; solver; ax_sys; ctx } = get_prover () in
   let axioms =
-    List.map (Propencoding.to_z3 ctx) @@ Axiom.find_axioms ax_sys (task, prop)
+    List.map (Propencoding.to_z3 ctx) @@ Axiom.find_axioms ax_sys prop
   in
   let query = Propencoding.to_z3 ctx prop in
   let _ =
@@ -126,8 +126,8 @@ let check_sat (task, prop) =
   in
   res
 
-let check_sat_bool (task, prop) =
-  let res = check_sat (task, prop) in
+let check_sat_bool prop =
+  let res = check_sat prop in
   let () =
     ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>SAT(%s): @} %s\n" (layout_smt_result res)
@@ -146,24 +146,13 @@ let check_sat_bool (task, prop) =
   in
   res
 
-let _tmp_path_prefix str = spf "/tmp/%s.scm" str
-
-let _store_input (task, prop) =
-  let path =
-    match task with
-    | None -> _tmp_path_prefix "tmp"
-    | Some str -> _tmp_path_prefix str
-  in
-  Sexplib.Sexp.save path (sexp_of_prop Nt.sexp_of_nt (Not prop))
-
 (** Unsat means true; otherwise means false *)
-let check_valid (task, prop) =
-  let () = _store_input (task, prop) in
+let check_valid prop =
   (* let () = *)
   (*   Printf.printf "input:\n%s\n" *)
   (*     (Sexplib.Sexp.to_string @@ sexp_of_prop Nt.sexp_of_nt (Not prop)) *)
   (* in *)
-  match check_sat (task, Not prop) with
+  match check_sat (Not prop) with
   | SmtUnsat -> true
   | SmtSat model ->
       ( ZUtilsLog.model @@ fun _ ->
