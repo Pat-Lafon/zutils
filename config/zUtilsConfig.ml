@@ -11,11 +11,6 @@ type options = {
 }
 [@@deriving of_yojson { strict = true }]
 
-(* SMT encoding for method predicates. [Axiom] keeps the quantified
-   method-predicate axioms and solves on those; [Both] additionally races a
-   recursive [define-fun-rec] encoding against them in the subprocess
-   portfolio. [Both] requires the program to define recursive [let rec]
-   measures for that encoding to race against. *)
 type smt_encoding = Axiom | Both [@@deriving of_yojson]
 
 type t = {
