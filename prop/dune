@@ -26,16 +26,15 @@
   typecheck
   ;; Prover
   z3decls
-  portfolio
   z3aux
   constencoding
   litencoding
   propencoding
+  portfolio
   axiom
   data
   simplProp
   prover
-  rename_test
   test)
  (preprocess
   (pps

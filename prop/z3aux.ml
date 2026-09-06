@@ -140,9 +140,9 @@ let float_to_z3 (env : Z3decls.z3_env) float =
 let char_to_z3 ctx char = Seq.mk_char ctx (Char.code char)
 let str_to_z3 ctx str = Seq.mk_string ctx str
 
-(* No memo table: Z3 hash-conses sorts within a ctx, so rebuilding one on each call
-   returns the same sort for only the FFI cost. A non-ctx-keyed memo (the old one)
-   would hand a second ctx the first ctx's sort and raise a cross-ctx mismatch. *)
+(* Z3 hash-conses sorts within a ctx, so rebuilding one per call returns the same
+   sort for the FFI cost alone. A memo keyed on the type alone would hand a second
+   ctx the first ctx's sort, which Z3 rejects as a cross-ctx mismatch. *)
 let tp_to_sort env t = smt_tp_to_sort env (to_smtty t)
 
 (* A registered datatype that hasn't been built into the env's [datatype_map]
