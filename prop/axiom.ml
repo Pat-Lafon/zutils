@@ -21,19 +21,16 @@ let find_axioms_by_preds asys query_preds =
       StrSet.subset preds query_preds)
     asys
 
-(* One pass in config order: a rule adds its predicates only when its key is
-   already present at its turn, so a rule lists every predicate it implies. *)
+(* One pass in config order: a rule fires when any of its keys is already present
+   at its turn, so a rule lists every predicate it implies. *)
 let pred_extension ps =
-  let rules =
-    List.map
-      (fun (k, vs) -> (StrSet.singleton k, vs))
-      (ZUtilsConfig.get_pred_extension_rules ())
-  in
   List.fold_left
-    (fun ps (rname, new_preds) ->
-      if StrSet.subset rname ps then StrSet.add_seq (List.to_seq new_preds) ps
+    (fun ps (keys, new_preds) ->
+      if List.exists (fun k -> StrSet.mem k ps) keys then
+        StrSet.add_seq (List.to_seq new_preds) ps
       else ps)
-    ps rules
+    ps
+    (ZUtilsConfig.get_pred_extension_rules ())
 
 let find_first_poly_type_from_axiom prop =
   let rec aux prop =
