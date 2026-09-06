@@ -30,13 +30,6 @@ let id_of_pattern pattern =
   | Ppat_construct (name, None) -> longid_to_id name
   | _ -> _die [%here]
 
-let rec tuple_id_of_pattern pattern =
-  match pattern.ppat_desc with
-  | Ppat_var ident -> [ ident.txt ]
-  | Ppat_any -> []
-  | Ppat_tuple ps -> List.concat_map tuple_id_of_pattern ps
-  | _ -> _die [%here]
-
 let rec typed_id_of_pattern pattern =
   match pattern.ppat_desc with
   | Ppat_var ident -> Nt.untyped ident.txt

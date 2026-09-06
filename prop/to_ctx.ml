@@ -74,14 +74,7 @@ let get_axiom_ctx filename =
            match value_binding.pvb_attributes with
            | [ x ] -> (
                match x.attr_name.txt with
-               | "axiom" ->
-                   let tasks =
-                     match x.attr_payload with
-                     | PStr [] -> []
-                     | PPat (pat, None) -> To_id.tuple_id_of_pattern pat
-                     | _ -> _die [%here]
-                   in
-                   (name, tasks, To_prop.prop_of_expr value_binding.pvb_expr)
+               | "axiom" -> (name, To_prop.prop_of_expr value_binding.pvb_expr)
                | _ ->
                    _failatwith [%here]
                      "syntax error: non known rty kind, not axiom | assert | \

@@ -18,7 +18,6 @@
   to_lit
   to_notation
   to_prop
-  to_axiom
   to_ctx
   front
   ;; Typecheck
