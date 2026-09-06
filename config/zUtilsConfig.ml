@@ -18,7 +18,7 @@ type t = {
   log_tags : string list; [@default []]
   prover_timeout_bound : int; [@default 1999]
   options : options; [@default Result.get_ok (options_of_yojson (`Assoc []))]
-  pred_extension_rules : (string * string list) list; [@default []]
+  pred_extension_rules : (string list * string list) list; [@default []]
   smt_encoding : smt_encoding; [@default Axiom]
 }
 [@@deriving of_yojson { strict = true }]
