@@ -32,9 +32,9 @@ let%test "root_of strips the renamer's tag and nothing else" =
   = [ "res_0"; "x"; "a__b"; "7"; "x__0" ]
 
 let%test "unique issues a name it has not issued before" =
-  let a = unique "x" in
-  let b = unique "x" in
-  a <> "x" && b <> "x" && a <> b
+  let a = unique "zz" in
+  let b = unique "zz" in
+  a <> "zz" && b <> "zz" && a <> b
 
 let%test "unique re-tags rather than nesting tags" =
   root_of (unique (unique "x")) = "x"
