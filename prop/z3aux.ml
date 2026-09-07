@@ -139,7 +139,6 @@ let float_to_z3 (env : Z3decls.z3_env) float =
 
 let char_to_z3 ctx char = Seq.mk_char ctx (Char.code char)
 let str_to_z3 ctx str = Seq.mk_string ctx str
-
 let tp_to_sort env t = smt_tp_to_sort env (to_smtty t)
 
 (* A registered datatype that hasn't been built into the env's [datatype_map]
