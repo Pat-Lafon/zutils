@@ -10,8 +10,9 @@ let unique_quantifiers prop =
     | Exists { body; qv } | Forall { body; qv } ->
         let* m = aux body in
         if StrSet.mem qv.x m then (
-          Printf.printf "prop %s\n" (Front.layout_prop prop);
-          Printf.printf "duplicate quantifier %s\n" qv.x;
+          ( ZUtilsLog.queries @@ fun () ->
+            Printf.printf "prop %s\n" (Front.layout_prop prop);
+            Printf.printf "duplicate quantifier %s\n" qv.x );
           None)
         else Some (StrSet.add qv.x m)
     | And l | Or l -> aux_multi l
@@ -28,6 +29,7 @@ let unique_quantifiers prop =
         let res = StrSet.union m m' in
         if StrSet.cardinal res != StrSet.cardinal m + StrSet.cardinal m' then (
           (let layout m = StrList.to_string @@ StrSet.to_list m in
+           ZUtilsLog.queries @@ fun () ->
            Printf.printf "[%s] ?= [%s] + [%s]\n" (layout res) (layout m)
              (layout m'));
           None)
@@ -68,9 +70,4 @@ let to_z3 ctx prop =
     ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>To NNF:@} %s\n" (Front.layout_prop p1)
   in
-  (* let p2 = to_snf p1 in *)
-  (* let () = *)
-  (*   ZUtilsLog.queries @@ fun _ -> *)
-  (*   Pp.printf "@{<bold>To SNF:@} %s\n" (Front.layout_prop p2) *)
-  (* in *)
   aux p1
