@@ -10,8 +10,9 @@ let unique_quantifiers prop =
     | Exists { body; qv } | Forall { body; qv } ->
         let* m = aux body in
         if StrSet.mem qv.x m then (
-          Printf.printf "prop %s\n" (Front.layout_prop prop);
-          Printf.printf "duplicate quantifier %s\n" qv.x;
+          ( ZUtilsLog.queries @@ fun () ->
+            Printf.printf "prop %s\n" (Front.layout_prop prop);
+            Printf.printf "duplicate quantifier %s\n" qv.x );
           None)
         else Some (StrSet.add qv.x m)
     | And l | Or l -> aux_multi l
@@ -28,6 +29,7 @@ let unique_quantifiers prop =
         let res = StrSet.union m m' in
         if StrSet.cardinal res != StrSet.cardinal m + StrSet.cardinal m' then (
           (let layout m = StrList.to_string @@ StrSet.to_list m in
+           ZUtilsLog.queries @@ fun () ->
            Printf.printf "[%s] ?= [%s] + [%s]\n" (layout res) (layout m)
              (layout m'));
           None)
@@ -63,10 +65,7 @@ let to_z3 (env : Z3decls.z3_env) prop =
         make_exists ctx [ tpedvar_to_z3 env (qv.ty, qv.x) ] (aux body)
     | Lit lit -> Litencoding.typed_lit_to_z3 env lit
   in
-  let () =
-    ZUtilsLog.debug @@ fun () ->
-    _assert [%here] "sanity check" (unique_quantifiers prop)
-  in
+  let () = _assert [%here] "sanity check" (unique_quantifiers prop) in
   let p1 = to_nnf prop in
   let () =
     ZUtilsLog.queries @@ fun _ ->

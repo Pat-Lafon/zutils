@@ -23,9 +23,6 @@ type t = {
 }
 [@@deriving of_yojson { strict = true }]
 
-(* Derived from the [@default] attributes by parsing an empty object. *)
-let default = Result.get_ok (of_yojson (`Assoc []))
-
 include ConfigSection.Make (struct
   type nonrec t = t
 
