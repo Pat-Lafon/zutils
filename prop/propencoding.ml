@@ -65,10 +65,7 @@ let to_z3 (env : Z3decls.z3_env) prop =
         make_exists ctx [ tpedvar_to_z3 env (qv.ty, qv.x) ] (aux body)
     | Lit lit -> Litencoding.typed_lit_to_z3 env lit
   in
-  let () =
-    ZUtilsLog.debug @@ fun () ->
-    _assert [%here] "sanity check" (unique_quantifiers prop)
-  in
+  let () = _assert [%here] "sanity check" (unique_quantifiers prop) in
   let p1 = to_nnf prop in
   let () =
     ZUtilsLog.queries @@ fun _ ->
