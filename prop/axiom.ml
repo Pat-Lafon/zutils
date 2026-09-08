@@ -32,6 +32,13 @@ let pred_extension ps =
     ps
     (ZUtilsConfig.get_pred_extension_rules ())
 
+let%test "pred_extension fires on any key of a rule, not on every key" =
+  let default = Result.get_ok (ZUtilsConfig.of_yojson (`Assoc [])) in
+  ZUtilsConfig.set
+    { default with pred_extension_rules = [ ([ "hd"; "tl" ], [ "list_mem" ]) ] };
+  let ext l = StrSet.to_list @@ pred_extension (StrSet.of_list l) in
+  ext [ "tl" ] = [ "list_mem"; "tl" ] && ext [ "nil" ] = [ "nil" ]
+
 let find_first_poly_type_from_axiom prop =
   let rec aux prop =
     match prop with
