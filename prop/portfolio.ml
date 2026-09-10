@@ -124,10 +124,6 @@ let solve (entries : entry list) : smt_result * string option =
             !live)
         (fun () ->
           List.iter (fun e -> live := spawn_one devnull e :: !live) entries;
-          (* Poll only our own pids with [WNOHANG]; [Unix.wait ()] would reap — and
-             steal the status of — any child of the host process, not just our z3s.
-             Each z3 self-exits on its [:timeout], so some pid always finishes and
-             the loop drains. *)
           let rec loop reason =
             match !live with
             | [] -> (Unknown reason, None)
