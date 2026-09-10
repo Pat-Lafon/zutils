@@ -72,7 +72,8 @@ let dump_queries entries =
       let path =
         Filename.concat
           (Filename.get_temp_dir_name ())
-          (Printf.sprintf "zutils_query_%i_%s.smt2" !query_counter label)
+          (Printf.sprintf "zutils_query_%i_%i_%s.smt2" (Unix.getpid ())
+             !query_counter label)
       in
       Out_channel.with_open_text path (fun oc -> output_string oc query);
       Printf.eprintf "Dumped SMT query to %s\n" path)
@@ -82,7 +83,6 @@ let run_z3_binary ~extra_bodies axiom_body : smt_result * string option =
   let timeout =
     match !_timeout with Some t -> t | None -> get_prover_timeout_bound ()
   in
-  (* [:timeout] is each child's only termination guarantee. *)
   if timeout <= 0 then
     failwith (Printf.sprintf "prover timeout must be positive, got %d" timeout);
   let rlimit_opt =
@@ -134,7 +134,7 @@ let all_axioms () =
 let check_sat ~axioms ?(extra_bodies = []) prop =
   incr query_counter;
   let { env; _ } = get_prover () in
-  let z3_axioms = List.map (Propencoding.to_z3 env) axioms in
+  let z3_axioms = List.map (fun (_, p) -> Propencoding.to_z3 env p) axioms in
   let query = Propencoding.to_z3 env prop in
   let _ =
     ZUtilsLog.queries @@ fun _ ->
