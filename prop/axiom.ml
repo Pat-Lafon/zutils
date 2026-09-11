@@ -24,18 +24,35 @@ let find_axioms_by_preds asys query_preds =
   in
   StrMap.to_key_list m
 
-let rules = [ (StrSet.of_list [ "hd" ], [ "list_mem" ]) ]
-
+(* A rule fires on the query's own predicates, never on what another rule added,
+   so a rule must also list whatever the predicates it adds would imply. *)
 let pred_extension ps =
-  let ps =
-    List.fold_left
-      (fun ps (rname, new_preds) ->
-        let new_preds = if StrSet.subset rname ps then new_preds else [] in
-        let ps = StrSet.add_seq (List.to_seq new_preds) ps in
-        ps)
-      ps rules
+  List.fold_left
+    (fun acc (keys, new_preds) ->
+      if List.exists (fun k -> StrSet.mem k ps) keys then
+        StrSet.add_seq (List.to_seq new_preds) acc
+      else acc)
+    ps
+    (ZUtilsConfig.get_pred_extension_rules ())
+
+let%test "pred_extension fires on any key of a rule, not on every key" =
+  let default = Result.get_ok (ZUtilsConfig.of_yojson (`Assoc [])) in
+  ZUtilsConfig.set
+    { default with pred_extension_rules = [ ([ "hd"; "tl" ], [ "list_mem" ]) ] };
+  let ext l = StrSet.to_list @@ pred_extension (StrSet.of_list l) in
+  ext [ "tl" ] = [ "list_mem"; "tl" ] && ext [ "nil" ] = [ "nil" ]
+
+let%test "pred_extension is one pass, in either rule order" =
+  let default = Result.get_ok (ZUtilsConfig.of_yojson (`Assoc [])) in
+  let ext rules l =
+    ZUtilsConfig.set { default with pred_extension_rules = rules };
+    StrSet.to_list @@ pred_extension (StrSet.of_list l)
   in
-  ps
+  let chained =
+    [ ([ "list_mem" ], [ "list_len" ]); ([ "hd" ], [ "list_mem" ]) ]
+  in
+  ext chained [ "hd" ] = [ "hd"; "list_mem" ]
+  && ext (List.rev chained) [ "hd" ] = [ "hd"; "list_mem" ]
 
 (** instantiate_poly_axioms *)
 
