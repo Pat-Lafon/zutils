@@ -1,60 +1,25 @@
 open Z3
 open Solver
-open Goal
 open Sugar
 open Syntax
 open ZUtilsConfig
-module Propencoding = Propencoding
 
-type smt_result = SmtSat of Model.model | SmtUnsat | Timeout
-
-let layout_model model =
-  Sugar.short_str (ZUtilsConfig.get_max_printing_size ())
-  @@ Z3.Model.to_string model
+(* Constructors re-exported so callers use [Prover.SmtUnsat], not [Portfolio.*]. *)
+type smt_result = Portfolio.smt_result =
+  | SmtSat
+  | SmtUnsat
+  | Unknown of string option
 
 let layout_smt_result = function
-  | SmtSat model ->
-      ( ZUtilsLog.model @@ fun _ ->
-        Printf.printf "model:\n%s\n" (layout_model model) );
-      "sat"
+  | SmtSat -> "sat"
   | SmtUnsat -> "unsat"
-  | Timeout -> "timeout"
+  | Unknown None -> "unknown"
+  | Unknown (Some r) -> Printf.sprintf "unknown(%s)" r
 
-type prover = {
-  ax_sys : laxiom_system;
-  ctx : context;
-  solver : solver;
-  goal : goal;
-}
+type prover = { ax_sys : laxiom_system; ctx : context }
 
-let _mk_prover timeout_bound =
-  let ctx =
-    mk_context
-      [
-        ("model", "true");
-        ("proof", "false");
-        ("timeout", string_of_int timeout_bound);
-      ]
-  in
-  let solver = mk_solver ctx None in
-  let goal = mk_goal ctx true false false in
-  let ax_sys = Axiom.emp in
-  { ctx; ax_sys; solver; goal }
-
-let mk_prover () = _mk_prover (get_prover_timeout_bound ())
+let mk_prover () = { ctx = mk_context []; ax_sys = Axiom.emp }
 let _prover : prover option ref = ref None
-
-let reset_solver_in_prover () =
-  match !_prover with
-  | Some p ->
-      let solver = mk_solver p.ctx None in
-      let p = { p with solver } in
-      let () = _prover := Some p in
-      p
-  | None ->
-      let p = mk_prover () in
-      let () = _prover := Some p in
-      p
 
 let get_prover () =
   match !_prover with
@@ -64,92 +29,131 @@ let get_prover () =
       let () = _prover := Some p in
       p
 
-let get_ctx () = (get_prover ()).ctx
+let query_counter = ref 0
+
+(* Emitted into [run_z3_binary]'s prelude; None = z3/config default. *)
+let _rlimit : int option ref = ref None
+
+let set_z3_rlimit (rlimit : int option) =
+  Option.iter
+    (fun n ->
+      if n <= 0 then
+        failwith (Printf.sprintf "z3 rlimit must be positive, got %d" n))
+    rlimit;
+  _rlimit := rlimit
+
+let _timeout : int option ref = ref None
+
+let set_z3_timeout (timeout : int option) =
+  Option.iter
+    (fun n ->
+      if n <= 0 then
+        failwith (Printf.sprintf "z3 timeout must be positive, got %d" n))
+    timeout;
+  _timeout := timeout
 
 let update_axioms axioms =
-  match !_prover with
-  | Some p ->
-      _prover := Some { p with ax_sys = Axiom.add_laxioms p.ax_sys axioms }
-  | None ->
-      let p = mk_prover () in
-      _prover := Some { p with ax_sys = Axiom.add_laxioms p.ax_sys axioms }
+  let p = get_prover () in
+  _prover := Some { p with ax_sys = Axiom.add_laxioms p.ax_sys axioms }
 
-let handle_sat_result solver =
-  (* let _ = printf "solver_result\n" in *)
-  match check solver [] with
-  | UNSATISFIABLE -> SmtUnsat
-  | UNKNOWN ->
-      (* raise (InterExn "time out!") *)
-      (* Printf.printf "\ttimeout\n"; *)
-      Timeout
-  | SATISFIABLE -> (
-      match Solver.get_model solver with
-      | None -> failwith "never happen"
-      | Some m -> SmtSat m)
+let serialize (ctx : context) (exprs : Expr.expr list) : string =
+  let solver = mk_solver ctx None in
+  Solver.add solver exprs;
+  Solver.to_string solver
 
-let check_sat prop =
-  let { goal; solver; ax_sys; ctx } = get_prover () in
-  let axioms =
-    List.map (Propencoding.to_z3 ctx) @@ Axiom.find_axioms ax_sys prop
+let dump_queries entries =
+  ZUtilsLog.dump_smt @@ fun _ ->
+  List.iter
+    (fun { Portfolio.label; query } ->
+      let path =
+        Filename.concat
+          (Filename.get_temp_dir_name ())
+          (Printf.sprintf "zutils_query_%i_%i_%s.smt2" (Unix.getpid ())
+             !query_counter label)
+      in
+      Out_channel.with_open_text path (fun oc -> output_string oc query);
+      Printf.eprintf "Dumped SMT query to %s\n" path)
+    entries
+
+let run_z3_binary ~extra_bodies axiom_body : smt_result * string option =
+  let timeout =
+    match !_timeout with Some t -> t | None -> get_prover_timeout_bound ()
   in
+  if timeout <= 0 then
+    failwith (Printf.sprintf "prover timeout must be positive, got %d" timeout);
+  let rlimit_opt =
+    match !_rlimit with
+    | Some r -> Printf.sprintf "(set-option :rlimit %d)\n" r
+    | None -> ""
+  in
+  let wrap ?(dt_eager = false) ?(mbqi_only = false) body =
+    let dt = if dt_eager then "(set-option :smt.dt_lazy_splits 0)\n" else "" in
+    let mq =
+      if mbqi_only then
+        "(set-option :smt.ematching false)\n(set-option :smt.mbqi true)\n"
+      else ""
+    in
+    Printf.sprintf
+      "%s%s(set-option :timeout %d)\n\
+       %s%s\n\
+       (check-sat)\n\
+       (get-info :reason-unknown)\n"
+      dt mq timeout rlimit_opt body
+  in
+  let entries =
+    [
+      { Portfolio.label = "axiom"; query = wrap axiom_body };
+      {
+        Portfolio.label = "axiom_dt-eager";
+        query = wrap ~dt_eager:true axiom_body;
+      };
+      {
+        Portfolio.label = "axiom_mbqi-only";
+        query = wrap ~mbqi_only:true axiom_body;
+      };
+    ]
+    @ List.map
+        (fun body -> { Portfolio.label = "functional"; query = wrap body })
+        extra_bodies
+  in
+  dump_queries entries;
+  Portfolio.solve entries
+
+let select_axioms prop =
+  let { ax_sys; _ } = get_prover () in
+  Axiom.find_axioms ax_sys prop
+
+let all_axioms () =
+  let { ax_sys; _ } = get_prover () in
+  Axiom.all_axioms ax_sys
+
+let check_sat ~axioms ?(extra_bodies = []) prop =
+  incr query_counter;
+  let { ctx; _ } = get_prover () in
+  let z3_axioms = List.map (fun (_, p) -> Propencoding.to_z3 ctx p) axioms in
   let query = Propencoding.to_z3 ctx prop in
   let _ =
     ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>QUERY:@}\n%s\n" (Expr.to_string query)
   in
-  Goal.reset goal;
-  Goal.add goal (axioms @ [ query ]);
-  let _ =
-    ZUtilsLog.queries @@ fun _ ->
-    Pp.printf "@{<bold>Goal:@}\n%s\n" (Goal.to_string goal)
+  let body = serialize ctx (z3_axioms @ [ query ]) in
+  let time_t, (res, won) =
+    Sugar.clock (fun () -> run_z3_binary ~extra_bodies body)
   in
-  (* let goal = Goal.simplify goal None in *)
-  (* let _ = *)
-  (*   ZUtilsLog.queries @@ fun _ -> *)
-  (*   Pp.printf "@{<bold>Simplifid Goal:@}\n%s\n" (Goal.to_string goal) *)
-  (* in *)
-  Goal.add goal axioms;
-  Solver.reset solver;
-  Solver.add solver (get_formulas goal);
-  let time_t, res = Sugar.clock (fun () -> handle_sat_result solver) in
   let () =
     ZUtilsLog.stat @@ fun _ ->
-    Pp.printf "@{<bold>Z3 Solving time: %.2f@}\n" time_t
+    Pp.printf "@{<bold>Z3 Solving time [q%i]: %.2f (%s, %i asserts, won:%s)@}\n"
+      !query_counter time_t (layout_smt_result res)
+      (1 + List.length z3_axioms)
+      (match won with Some l -> l | None -> "-")
   in
   res
 
-let check_sat_bool prop =
-  let res = check_sat prop in
-  let () =
-    ZUtilsLog.queries @@ fun _ ->
-    Pp.printf "@{<bold>SAT(%s): @} %s\n" (layout_smt_result res)
-      (Front.layout_prop prop)
-  in
-  let res =
-    match res with
-    | SmtUnsat -> false
-    | SmtSat model ->
-        ( ZUtilsLog.model @@ fun _ ->
-          Printf.printf "model:\n%s\n" (layout_model model) );
-        true
-    | Timeout ->
-        (ZUtilsLog.queries @@ fun _ -> Pp.printf "@{<bold>SMTTIMEOUT@}\n");
-        false
-  in
-  res
-
-(** Unsat means true; otherwise means false *)
-let check_valid prop =
-  (* let () = *)
-  (*   Printf.printf "input:\n%s\n" *)
-  (*     (Sexplib.Sexp.to_string @@ sexp_of_prop Nt.sexp_of_nt (Not prop)) *)
-  (* in *)
-  match check_sat (Not prop) with
-  | SmtUnsat -> true
-  | SmtSat model ->
-      ( ZUtilsLog.model @@ fun _ ->
-        Printf.printf "model:\n%s\n" (layout_model model) );
-      false
-  | Timeout ->
-      (ZUtilsLog.queries @@ fun _ -> Pp.printf "@{<bold>SMTTIMEOUT@}\n");
-      false
+(* z3's [:reason-unknown] → which knob to raise to move the verdict. *)
+let coercion_hint = function
+  | Some r when String.starts_with ~prefix:"max. resource" r ->
+      "raise rlimit if this verdict is decision-relevant"
+  | Some ("timeout" | "canceled") ->
+      "raise the prover timeout if this verdict is decision-relevant"
+  | Some r -> Printf.sprintf "z3 reason-unknown: %s" r
+  | None -> "raise rlimit if this verdict is decision-relevant"

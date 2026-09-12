@@ -182,9 +182,12 @@ let gather_indicator_types query axioms =
           (match ty with None -> "mono" | Some ty -> Nt.layout ty))
       props
   in
-  List.map snd props
+  List.map (fun ((name, _ty), prop) -> (name, prop)) props
 
 let emp = StrMap.empty
+
+let all_axioms asys =
+  List.map (fun (name, { prop; _ }) -> (name, prop)) (StrMap.to_kv_list asys)
 
 let find_axioms asys query =
   let query_preds = StrSet.of_list @@ get_fv_preds_from_prop query in
