@@ -67,14 +67,6 @@ let get_prover () =
 let get_ctx () = (get_prover ()).ctx
 
 let update_axioms axioms =
-  let ctx = get_ctx () in
-  let axioms =
-    List.map
-      (fun (name, prop) ->
-        let z3_prop = Propencoding.to_z3 ctx prop in
-        (name, prop, z3_prop))
-      axioms
-  in
   match !_prover with
   | Some p ->
       _prover := Some { p with ax_sys = Axiom.add_laxioms p.ax_sys axioms }

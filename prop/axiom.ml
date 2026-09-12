@@ -4,11 +4,11 @@ open Syntax
 open Zdatatype
 open Sugar
 
-let add_laxiom asys (name, prop, z3_prop) =
+let add_laxiom asys (name, prop) =
   let preds = StrSet.of_list @@ get_fv_preds_from_prop prop in
   if StrMap.mem name asys then
     _die_with [%here] (spf "duplicate axiom name: %s" name)
-  else StrMap.add name { preds; prop; z3_prop } asys
+  else StrMap.add name { preds; prop } asys
 
 let add_laxioms asys l = List.fold_left add_laxiom asys l
 
