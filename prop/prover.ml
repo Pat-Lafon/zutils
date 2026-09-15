@@ -35,7 +35,7 @@ let get_prover () =
 
 let query_counter = ref 0
 
-(* Emitted into [run_z3_binary]'s prelude; None = z3/config default. *)
+(* [None] emits no [:rlimit], leaving z3's own default. *)
 let _rlimit : int option ref = ref None
 
 let set_z3_rlimit (rlimit : int option) =
@@ -79,7 +79,8 @@ let dump_queries entries =
       Printf.eprintf "Dumped SMT query to %s\n" path)
     entries
 
-let run_z3_binary ~extra_bodies axiom_body : smt_result * string option =
+(* The queries raced for one [check_sat] *)
+let portfolio_entries ~functional_bodies axiom_body : Portfolio.entry list =
   let timeout =
     match !_timeout with Some t -> t | None -> get_prover_timeout_bound ()
   in
@@ -104,24 +105,20 @@ let run_z3_binary ~extra_bodies axiom_body : smt_result * string option =
        (get-info :reason-unknown)\n"
       dt mq timeout rlimit_opt body
   in
-  let entries =
-    [
-      { Portfolio.label = "axiom"; query = wrap axiom_body };
-      {
-        Portfolio.label = "axiom_dt-eager";
-        query = wrap ~dt_eager:true axiom_body;
-      };
-      {
-        Portfolio.label = "axiom_mbqi-only";
-        query = wrap ~mbqi_only:true axiom_body;
-      };
-    ]
-    @ List.map
-        (fun body -> { Portfolio.label = "functional"; query = wrap body })
-        extra_bodies
-  in
-  dump_queries entries;
-  Portfolio.solve entries
+  [
+    { Portfolio.label = "axiom"; query = wrap axiom_body };
+    {
+      Portfolio.label = "axiom_dt-eager";
+      query = wrap ~dt_eager:true axiom_body;
+    };
+    {
+      Portfolio.label = "axiom_mbqi-only";
+      query = wrap ~mbqi_only:true axiom_body;
+    };
+  ]
+  @ List.map
+      (fun body -> { Portfolio.label = "functional"; query = wrap body })
+      functional_bodies
 
 let select_axioms prop =
   let { ax_sys; _ } = get_prover () in
@@ -131,7 +128,7 @@ let all_axioms () =
   let { ax_sys; _ } = get_prover () in
   Axiom.all_axioms ax_sys
 
-let check_sat ~axioms ?(extra_bodies = []) prop =
+let check_sat ~axioms ?(functional_bodies = []) prop =
   incr query_counter;
   let { env; _ } = get_prover () in
   let z3_axioms = List.map (fun (_, p) -> Propencoding.to_z3 env p) axioms in
@@ -141,15 +138,16 @@ let check_sat ~axioms ?(extra_bodies = []) prop =
     Pp.printf "@{<bold>QUERY:@}\n%s\n" (Expr.to_string query)
   in
   let body = serialize env (z3_axioms @ [ query ]) in
-  let time_t, (res, won) =
-    Sugar.clock (fun () -> run_z3_binary ~extra_bodies body)
-  in
+  let entries = portfolio_entries ~functional_bodies body in
+  dump_queries entries;
+  let time_t, (res, winner) = Sugar.clock (fun () -> Portfolio.solve entries) in
   let () =
     ZUtilsLog.stat @@ fun _ ->
-    Pp.printf "@{<bold>Z3 Solving time [q%i]: %.2f (%s, %i asserts, won:%s)@}\n"
+    Pp.printf
+      "@{<bold>Z3 Solving time [q%i]: %.2f (%s, %i asserts, winner:%s)@}\n"
       !query_counter time_t (layout_smt_result res)
       (1 + List.length z3_axioms)
-      (match won with Some l -> l | None -> "-")
+      (match winner with Some l -> l | None -> "-")
   in
   res
 
@@ -160,4 +158,4 @@ let coercion_hint = function
   | Some ("timeout" | "canceled") ->
       "raise the prover timeout if this verdict is decision-relevant"
   | Some r -> Printf.sprintf "z3 reason-unknown: %s" r
-  | None -> "raise rlimit if this verdict is decision-relevant"
+  | None -> "z3 gave no reason-unknown"

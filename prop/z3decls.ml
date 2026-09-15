@@ -1,37 +1,24 @@
 open Sugar
 open Normalty
 
-type z3_data_type = {
-  sort : Z3.Sort.sort;
-  constructors : (string * Z3.FuncDecl.func_decl) list;
-  recognizers : (string * Z3.FuncDecl.func_decl) list;
-  accessors : (string * Z3.FuncDecl.func_decl) list;
-}
-
+(* Everything one Z3 context knows by name: the sort built for each registered
+   datatype, and every function declaration an encoded term may apply — the
+   datatypes' constructors, recognizers and accessors, plus whatever the
+   consumer registers on top (a define-fun-rec per method predicate, say). *)
 type z3_env = {
   ctx : Z3.context;
-  datatype_map : (string, z3_data_type) Hashtbl.t;
-  rec_func_map : (string, Z3.FuncDecl.func_decl) Hashtbl.t;
+  datatype_sorts : (string, Z3.Sort.sort) Hashtbl.t;
+  funcs : (string, Z3.FuncDecl.func_decl) Hashtbl.t;
 }
 
-let z3_data_type_get (env : z3_env) (s : string) : z3_data_type option =
-  Hashtbl.find_opt env.datatype_map s
+let func_lookup (env : z3_env) (name : string) : Z3.FuncDecl.func_decl option =
+  Hashtbl.find_opt env.funcs name
 
-let z3_data_type_func_lookup (env : z3_env) (dt_name : string) (f : string) :
-    Z3.FuncDecl.func_decl option =
-  Option.bind (z3_data_type_get env dt_name) (fun dt ->
-      List.find_map (List.assoc_opt f)
-        [ dt.constructors; dt.recognizers; dt.accessors ])
-
-let rec_func_lookup (env : z3_env) (name : string) :
-    Z3.FuncDecl.func_decl option =
-  Hashtbl.find_opt env.rec_func_map name
-
-let register_rec_func (env : z3_env) (name : string)
-    (fd : Z3.FuncDecl.func_decl) : unit =
-  if Hashtbl.mem env.rec_func_map name then
-    _die_with [%here] (spf "duplicate functional symbol %s" name);
-  Hashtbl.add env.rec_func_map name fd
+let register_func (env : z3_env) (name : string) (fd : Z3.FuncDecl.func_decl) :
+    unit =
+  if Hashtbl.mem env.funcs name then
+    _die_with [%here] (spf "duplicate function symbol %s" name);
+  Hashtbl.add env.funcs name fd
 
 type field_spec = { fname : string; ftype : nt }
 type ctor_spec = { cname : string; fields : field_spec list }
@@ -47,19 +34,31 @@ let is_registered (name : string) : bool = Option.is_some (find_decl name)
 (* Registration order is source order, and OCaml requires a datatype be declared
    before it is referenced, so a field's own datatype is always registered first. *)
 let registered_decls () : datatype_decl list = List.rev !decl_registry
+let recognizer_prefix = "is_"
+let recognizer_name (cname : string) : string = recognizer_prefix ^ cname
 
-let rec reject_dup (d : datatype_decl) = function
-  | [] -> ()
-  | n :: tl when List.exists (String.equal n) tl ->
-      _die_with [%here] (spf "datatype %s: duplicate name %s" d.dt_name n)
-  | _ :: tl -> reject_dup d tl
+(* Every name a declaration claims in the one namespace [funcs] keys on. *)
+let names_of (d : datatype_decl) : string list =
+  d.dt_name
+  :: List.concat_map
+       (fun c ->
+         c.cname :: recognizer_name c.cname
+         :: List.map (fun f -> f.fname) c.fields)
+       d.ctors
 
+(* Names are unique across every registered datatype, not just within one: the
+   encoder resolves an applied symbol by name alone. *)
 let register_decl (d : datatype_decl) : unit =
-  if is_registered d.dt_name then
-    _die_with [%here] (spf "duplicate datatype %s" d.dt_name);
-  reject_dup d
-    (List.concat_map (fun c -> List.map (fun f -> f.fname) c.fields) d.ctors);
-  reject_dup d (List.map (fun c -> c.cname) d.ctors);
+  let taken = List.concat_map names_of !decl_registry in
+  let rec reject = function
+    | [] -> ()
+    | n :: tl ->
+        if List.mem n tl || List.mem n taken then
+          _die_with [%here]
+            (spf "datatype %s: name %s is already taken" d.dt_name n);
+        reject tl
+  in
+  reject (names_of d);
   decl_registry := d :: !decl_registry
 
 let exists_ctor (p : ctor_spec -> bool) : bool =
@@ -68,9 +67,6 @@ let exists_ctor (p : ctor_spec -> bool) : bool =
 let is_dt_accessor (opname : string) : bool =
   exists_ctor (fun c ->
       List.exists (fun f -> String.equal f.fname opname) c.fields)
-
-let recognizer_prefix = "is_"
-let recognizer_name (cname : string) : string = recognizer_prefix ^ cname
 
 let recognizer_ctor (opname : string) : string option =
   if String.starts_with ~prefix:recognizer_prefix opname then
