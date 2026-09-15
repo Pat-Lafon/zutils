@@ -150,7 +150,9 @@ let prop_of_expr expr =
   in
   aux expr
 
-let layout_prop__raw x = string_of_expression @@ prop_to_expr x
+(* The prop as OCaml source, printed through the parsetree: the one layout that
+   re-parses, so a consumer can write it out and read it back. *)
+let layout_prop_source x = string_of_expression @@ prop_to_expr x
 let layout_prop expr = layout_prop_ psetting expr
 let layout_prop_to_coq expr = layout_prop_ coqsetting expr
 let layout = layout_prop

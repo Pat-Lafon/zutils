@@ -20,14 +20,19 @@ let parse_reason_unknown (lines : string list) : string option =
         | _ -> None)
     lines
 
-(* z3 misbehaving (stderr output, `(error ...)`, empty/unrecognized output) is
-   raised, not collapsed to a verdict; only a genuine `unknown` line is [Unknown]. *)
-let classify ~(stdout : string) ~(stderr : string) : smt_result =
+(* Callers coerce [Unknown] into a decision, so a malfunctioning z3 raises. *)
+let classify ~(status : Unix.process_status) ~(stdout : string)
+    ~(stderr : string) : smt_result =
   let fail what =
     failwith
     @@ Printf.sprintf "z3 subprocess %s\n--- stdout ---\n%s\n--- stderr ---\n%s"
          what stdout stderr
   in
+  (match status with
+  | Unix.WEXITED 0 -> ()
+  | Unix.WEXITED n -> fail (Printf.sprintf "exited %d" n)
+  | Unix.WSIGNALED n -> fail (Printf.sprintf "killed by signal %d" n)
+  | Unix.WSTOPPED n -> fail (Printf.sprintf "stopped by signal %d" n));
   if String.trim stderr <> "" then fail "wrote to stderr";
   let lines = List.map String.trim (String.split_on_char '\n' stdout) in
   if List.exists (String.starts_with ~prefix:"(error ") lines then
@@ -51,8 +56,8 @@ let write_query_tmp (e : entry) : string =
 
 let read_file path = In_channel.with_open_bin path In_channel.input_all
 
-(* waitpid each killed pid so it doesn't linger as a zombie. *)
-let reap_killed (pids : int list) : unit =
+(* SIGKILL each pid, then waitpid it so it doesn't linger as a zombie. *)
+let kill_and_reap (pids : int list) : unit =
   List.iter
     (fun pid -> try Unix.kill pid Sys.sigkill with Unix.Unix_error _ -> ())
     pids;
@@ -61,16 +66,6 @@ let reap_killed (pids : int list) : unit =
       try ignore (Unix.waitpid [] pid)
       with Unix.Unix_error (Unix.ECHILD, _, _) -> ())
     pids
-
-(* On top of [classify], reject a sat/unsat verdict from a process that didn't exit cleanly. *)
-let classify_outcome ~stdout ~stderr ~(status : Unix.process_status) :
-    smt_result =
-  match classify ~stdout ~stderr with
-  | Unknown _ as t -> t
-  | (SmtSat | SmtUnsat) as r -> (
-      match status with
-      | Unix.WEXITED 0 -> r
-      | _ -> failwith "z3 emitted a verdict but did not exit cleanly")
 
 type solver = {
   label : string;
@@ -115,7 +110,7 @@ let solve (entries : entry list) : smt_result * string option =
           (try Unix.close devnull with Unix.Unix_error _ -> ());
           (* The loop drops each solver from [live] the instant the poll reaps it,
              so [live] holds only un-reaped pids. *)
-          reap_killed (List.map (fun c -> c.pid) !live);
+          kill_and_reap (List.map (fun c -> c.pid) !live);
           List.iter
             (fun c ->
               remove_tmp c.query_tmp;
@@ -146,7 +141,7 @@ let solve (entries : entry list) : smt_result * string option =
                     and stderr = read_file c.stderr_tmp in
                     remove_tmp c.stdout_tmp;
                     remove_tmp c.stderr_tmp;
-                    match classify_outcome ~stdout ~stderr ~status with
+                    match classify ~status ~stdout ~stderr with
                     | exception Failure m ->
                         log_retained ~label:c.label c.query_tmp;
                         failwith

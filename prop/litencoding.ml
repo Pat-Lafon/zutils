@@ -4,13 +4,6 @@ open Syntax
 open Sugar
 open Constencoding
 
-(* The datatype an [AAppOp] of type [ty] is looked up under: a constructor/accessor keys on
-   the type it acts on (first arg), a nullary constructor on its return type. *)
-let op_dt_key (ty : Nt.t) : string =
-  match Nt.destruct_arr_tp ty with
-  | t :: _, _ -> Nt.layout t
-  | [], _ -> Nt.layout ty
-
 let rec typed_lit_to_z3 (env : Z3decls.z3_env) lit =
   let ctx = env.ctx in
   let () =
@@ -87,18 +80,12 @@ let rec typed_lit_to_z3 (env : Z3decls.z3_env) lit =
       | "char_to_int", [ a ] -> Seq.mk_char_to_int ctx a
       | "char_le", [ a; b ] -> Seq.mk_char_le ctx a b
       | opname, args ->
-          let dt_key = op_dt_key op.ty in
           let func =
-            match Z3decls.z3_data_type_func_lookup env dt_key opname with
-            | Some f -> f
-            | None -> (
-                (* Method predicate: recursive def while the functional entry is
-                   being serialized (the map is populated), else uninterpreted
-                   (axiom encoding — the map is empty). *)
-                match Z3decls.rec_func_lookup env opname with
-                | Some fd -> fd
-                | None ->
-                    let argsty, retty = Nt.destruct_arr_tp op.ty in
-                    z3func env opname argsty retty)
+            match Z3decls.func_lookup env opname with
+            | Some fd -> fd
+            | None ->
+                (* A method predicate this env holds no definition for. *)
+                let argsty, retty = Nt.destruct_arr_tp op.ty in
+                z3func env opname argsty retty
           in
           Z3.FuncDecl.apply func args)
