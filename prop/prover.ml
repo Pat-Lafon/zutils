@@ -4,18 +4,9 @@ open Sugar
 open Syntax
 open ZUtilsConfig
 
-(* Constructors re-exported so callers use [Prover.SmtUnsat], not [Portfolio.*]. *)
-type smt_result = Portfolio.smt_result =
-  | SmtSat
-  | SmtUnsat
-  | Unknown of string option
-
-let layout_smt_result = function
-  | SmtSat -> "sat"
-  | SmtUnsat -> "unsat"
-  | Unknown None -> "unknown"
-  | Unknown (Some r) -> Printf.sprintf "unknown(%s)" r
-
+(* Constructors stay in [Portfolio]; a match on a [check_sat] result resolves
+   them from the scrutinee's type. *)
+type smt_result = Portfolio.smt_result
 type prover = { ax_sys : laxiom_system; env : Z3decls.z3_env }
 
 let mk_prover () =
@@ -145,7 +136,8 @@ let check_sat ~axioms ?(functional_bodies = []) prop =
     ZUtilsLog.stat @@ fun _ ->
     Pp.printf
       "@{<bold>Z3 Solving time [q%i]: %.2f (%s, %i asserts, winner:%s)@}\n"
-      !query_counter time_t (layout_smt_result res)
+      !query_counter time_t
+      (Portfolio.layout_smt_result res)
       (1 + List.length z3_axioms)
       (match winner with Some l -> l | None -> "-")
   in
@@ -154,8 +146,8 @@ let check_sat ~axioms ?(functional_bodies = []) prop =
 (* z3's [:reason-unknown] → which knob to raise to move the verdict. *)
 let coercion_hint = function
   | Some r when String.starts_with ~prefix:"max. resource" r ->
-      "raise rlimit if this verdict is decision-relevant"
+      "raise rlimit first, then debug the query"
   | Some ("timeout" | "canceled") ->
-      "raise the prover timeout if this verdict is decision-relevant"
+      "raise the prover timeout first, then debug the query"
   | Some r -> Printf.sprintf "z3 reason-unknown: %s" r
   | None -> "z3 gave no reason-unknown"
