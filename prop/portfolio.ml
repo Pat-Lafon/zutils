@@ -20,6 +20,12 @@ let parse_reason_unknown (lines : string list) : string option =
         | _ -> None)
     lines
 
+let layout_smt_result = function
+  | SmtSat -> "sat"
+  | SmtUnsat -> "unsat"
+  | Unknown None -> "unknown"
+  | Unknown (Some r) -> Printf.sprintf "unknown(%s)" r
+
 (* Callers coerce [Unknown] into a decision, so a malfunctioning z3 raises. *)
 let classify ~(status : Unix.process_status) ~(stdout : string)
     ~(stderr : string) : smt_result =
