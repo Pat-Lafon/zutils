@@ -26,29 +26,35 @@ let layout_smt_result = function
   | Unknown None -> "unknown"
   | Unknown (Some r) -> Printf.sprintf "unknown(%s)" r
 
-(* Callers coerce [Unknown] into a decision, so a malfunctioning z3 raises. *)
 let classify ~(status : Unix.process_status) ~(stdout : string)
-    ~(stderr : string) : smt_result =
+    ~(stderr : string) : (smt_result, string) result =
   let fail what =
-    failwith
-    @@ Printf.sprintf "z3 subprocess %s\n--- stdout ---\n%s\n--- stderr ---\n%s"
-         what stdout stderr
+    Error
+      (Printf.sprintf "z3 subprocess %s\n--- stdout ---\n%s\n--- stderr ---\n%s"
+         what stdout stderr)
   in
-  (match status with
-  | Unix.WEXITED 0 -> ()
-  | Unix.WEXITED n -> fail (Printf.sprintf "exited %d" n)
+  match status with
+  | Unix.WEXITED n when n <> 0 -> fail (Printf.sprintf "exited %d" n)
   | Unix.WSIGNALED n -> fail (Printf.sprintf "killed by signal %d" n)
-  | Unix.WSTOPPED n -> fail (Printf.sprintf "stopped by signal %d" n));
-  if String.trim stderr <> "" then fail "wrote to stderr";
-  let lines = List.map String.trim (String.split_on_char '\n' stdout) in
-  if List.exists (String.starts_with ~prefix:"(error ") lines then
-    fail "emitted error on stdout";
-  match List.find_opt (fun s -> s <> "") lines with
-  | None -> fail "produced no output"
-  | Some "unsat" -> SmtUnsat
-  | Some "sat" -> SmtSat
-  | Some "unknown" -> Unknown (parse_reason_unknown lines)
-  | Some other -> fail (Printf.sprintf "unrecognized first line %S" other)
+  | Unix.WSTOPPED n -> fail (Printf.sprintf "stopped by signal %d" n)
+  | Unix.WEXITED _ -> (
+      let lines =
+        String.split_on_char '\n' stdout
+        |> List.map String.trim
+        |> List.filter (fun s -> s <> "")
+      in
+      if String.trim stderr <> "" then fail "wrote to stderr"
+      else
+        match List.find_opt (String.starts_with ~prefix:"(error ") lines with
+        | Some e -> fail (Printf.sprintf "emitted %s on stdout" e)
+        | None -> (
+            match lines with
+            | [] -> fail "produced no output"
+            | "unsat" :: _ -> Ok SmtUnsat
+            | "sat" :: _ -> Ok SmtSat
+            | "unknown" :: rest -> Ok (Unknown (parse_reason_unknown rest))
+            | other :: _ ->
+                fail (Printf.sprintf "unrecognized first line %S" other)))
 
 let remove_tmp tmp = try Sys.remove tmp with Sys_error _ -> ()
 
@@ -62,10 +68,11 @@ let write_query_tmp (e : entry) : string =
 
 let read_file path = In_channel.with_open_bin path In_channel.input_all
 
-(* SIGKILL each pid, then waitpid it so it doesn't linger as a zombie. *)
 let kill_and_reap (pids : int list) : unit =
   List.iter
-    (fun pid -> try Unix.kill pid Sys.sigkill with Unix.Unix_error _ -> ())
+    (fun pid ->
+      try Unix.kill pid Sys.sigkill
+      with Unix.Unix_error (Unix.ESRCH, _, _) -> ())
     pids;
   List.iter
     (fun pid ->
@@ -81,25 +88,24 @@ type solver = {
   pid : int;
 }
 
-let spawn_one (devnull : Unix.file_descr) (entry : entry) : solver =
+let spawn_one (entry : entry) : solver =
   let query_tmp = write_query_tmp entry in
   let stdout_tmp = Filename.temp_file "zutils_z3_out_" ".txt" in
   let stderr_tmp = Filename.temp_file "zutils_z3_err_" ".txt" in
+  let devnull = Unix.openfile "/dev/null" [ Unix.O_RDONLY ] 0 in
   let out_fd = Unix.openfile stdout_tmp [ Unix.O_WRONLY; Unix.O_TRUNC ] 0o600 in
   let err_fd = Unix.openfile stderr_tmp [ Unix.O_WRONLY; Unix.O_TRUNC ] 0o600 in
+  let close_fds () = List.iter Unix.close [ devnull; out_fd; err_fd ] in
   match
     Unix.create_process "z3"
       [| "z3"; "-smt2"; query_tmp |]
       devnull out_fd err_fd
   with
   | pid ->
-      Unix.close out_fd;
-      Unix.close err_fd;
+      close_fds ();
       { label = entry.label; query_tmp; stdout_tmp; stderr_tmp; pid }
   | exception exn ->
-      List.iter
-        (fun fd -> try Unix.close fd with Unix.Unix_error _ -> ())
-        [ out_fd; err_fd ];
+      close_fds ();
       remove_tmp stdout_tmp;
       remove_tmp stderr_tmp;
       remove_tmp query_tmp;
@@ -110,10 +116,8 @@ let solve (entries : entry list) : smt_result * string option =
   | [] -> failwith "Portfolio.solve: no entries"
   | _ ->
       let live = ref [] in
-      let devnull = Unix.openfile "/dev/null" [ Unix.O_RDONLY ] 0 in
       Fun.protect
         ~finally:(fun () ->
-          (try Unix.close devnull with Unix.Unix_error _ -> ());
           (* The loop drops each solver from [live] the instant the poll reaps it,
              so [live] holds only un-reaped pids. *)
           kill_and_reap (List.map (fun c -> c.pid) !live);
@@ -124,7 +128,7 @@ let solve (entries : entry list) : smt_result * string option =
               remove_tmp c.stderr_tmp)
             !live)
         (fun () ->
-          List.iter (fun e -> live := spawn_one devnull e :: !live) entries;
+          List.iter (fun e -> live := spawn_one e :: !live) entries;
           let rec loop reason =
             match !live with
             | [] -> (Unknown reason, None)
@@ -148,15 +152,15 @@ let solve (entries : entry list) : smt_result * string option =
                     remove_tmp c.stdout_tmp;
                     remove_tmp c.stderr_tmp;
                     match classify ~status ~stdout ~stderr with
-                    | exception Failure m ->
+                    | Error m ->
                         log_retained ~label:c.label c.query_tmp;
                         failwith
                           (Printf.sprintf "Portfolio: z3 error (%s): %s" c.label
                              m)
-                    | (SmtSat | SmtUnsat) as r ->
+                    | Ok ((SmtSat | SmtUnsat) as r) ->
                         remove_tmp c.query_tmp;
                         (r, Some c.label)
-                    | Unknown r ->
+                    | Ok (Unknown r) ->
                         remove_tmp c.query_tmp;
                         (* keep the first non-None reason; a later [unknown] may carry none *)
                         loop (if Option.is_none reason then r else reason)))
