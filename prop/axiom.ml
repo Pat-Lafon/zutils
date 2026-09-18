@@ -88,27 +88,20 @@ let gather_indicator_types query axioms =
       (fun s (_, { preds; _ }) -> StrSet.union preds s)
       StrSet.empty axioms
   in
-  let typed_preds =
+  let relevant_preds =
     List.filter (fun x -> StrSet.mem x.x preds_in_aximos) typed_preds
   in
-  let get_actual_types pred_name =
-    List.filter_map
-      (fun p ->
-        if String.equal pred_name p.x then
-          let params, _ = Nt.destruct_arr_tp p.ty in
-          match params with
-          | [] ->
-              None
-              (* _die_with [%here] (spf "%s: %s" pred_name (Nt.layout p.ty)) *)
-          | x :: _ -> Some x
-        else None)
-      typed_preds
-  in
+  (* The concrete types to instantiate each polymorphic axiom at (below): the
+     first-argument type of every relevant predicate as it appears in the query.
+     Nullary preds contribute nothing. *)
   let indicator_types =
     List.slow_rm_dup Nt.equal_nt
-    @@ List.concat_map
-         (fun pred_name -> get_actual_types pred_name.x)
-         typed_preds
+    @@ List.filter_map
+         (fun p ->
+           match Nt.destruct_arr_tp p.ty with
+           | x :: _, _ -> Some x
+           | [], _ -> None)
+         relevant_preds
   in
   let instantiate_axiom_by_ty ax ax_fst_ty ty =
     let tvars = Nt.gather_type_vars ty in
