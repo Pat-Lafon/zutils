@@ -43,6 +43,12 @@ let set_z3_timeout (timeout : int option) =
     timeout;
   _timeout := timeout
 
+(* Consumer-chosen z3 options, e.g. [("produce-models", "true")], each emitted as
+   a [(set-option :k v)] line ahead of every entry's own settings, so an entry's
+   tactic settings, the timeout and the rlimit still win. *)
+let _options : (string * string) list ref = ref []
+let set_z3_options (options : (string * string) list) = _options := options
+
 let update_axioms axioms =
   let p = get_prover () in
   _prover := Some { p with ax_sys = Axiom.add_laxioms p.ax_sys axioms }
@@ -78,6 +84,12 @@ let portfolio_entries axiom_body : Portfolio.entry list =
     | Some r -> Printf.sprintf "(set-option :rlimit %d)\n" r
     | None -> ""
   in
+  let options =
+    String.concat ""
+      (List.map
+         (fun (k, v) -> Printf.sprintf "(set-option :%s %s)\n" k v)
+         !_options)
+  in
   let wrap ?(mbqi_only = false) body =
     let mq =
       if mbqi_only then
@@ -85,11 +97,11 @@ let portfolio_entries axiom_body : Portfolio.entry list =
       else ""
     in
     Printf.sprintf
-      "%s(set-option :timeout %d)\n\
+      "%s%s(set-option :timeout %d)\n\
        %s%s\n\
        (check-sat)\n\
        (get-info :reason-unknown)\n"
-      mq timeout rlimit_opt body
+      options mq timeout rlimit_opt body
   in
   [
     { Portfolio.label = "axiom"; query = wrap axiom_body };
