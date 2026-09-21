@@ -91,9 +91,6 @@ let gather_indicator_types query axioms =
   let relevant_preds =
     List.filter (fun x -> StrSet.mem x.x preds_in_aximos) typed_preds
   in
-  (* The concrete types to instantiate each polymorphic axiom at (below): the
-     first-argument type of every relevant predicate as it appears in the query.
-     Nullary preds contribute nothing. *)
   let indicator_types =
     List.slow_rm_dup Nt.equal_nt
     @@ List.filter_map
