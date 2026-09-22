@@ -119,10 +119,13 @@ let all_axioms () =
   let { ax_sys; _ } = get_prover () in
   Axiom.all_axioms ax_sys
 
-let check_sat ~axioms ?(functional_bodies = []) prop =
+let check_sat ?(functional_bodies = []) prop =
   incr query_counter;
-  let { env; _ } = get_prover () in
-  let z3_axioms = List.map (fun (_, p) -> Propencoding.to_z3 env p) axioms in
+  let { env; ax_sys } = get_prover () in
+  let z3_axioms =
+    List.map (fun (_, p) -> Propencoding.to_z3 env p)
+    @@ Axiom.find_axioms ax_sys prop
+  in
   let query = Propencoding.to_z3 env prop in
   let _ =
     ZUtilsLog.queries @@ fun _ ->
