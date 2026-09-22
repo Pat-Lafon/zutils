@@ -31,7 +31,7 @@ let%test "root_of strips the renamer's tag and nothing else" =
   List.map root_of [ "res_0"; "x__7"; "a__b"; "7"; "x__0__12" ]
   = [ "res_0"; "x"; "a__b"; "7"; "x__0" ]
 
-let%test "unique issues a name it has not issued before" =
+let%test "unique returns neither its input nor a repeat" =
   let a = unique "zz" in
   let b = unique "zz" in
   a <> "zz" && b <> "zz" && a <> b

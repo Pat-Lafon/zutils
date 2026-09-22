@@ -138,7 +138,10 @@ let rec lit_of_expr expr =
 and typed_lit_of_expr expr =
   match expr.pexp_desc with
   | Pexp_constraint (expr, ty) -> (lit_of_expr expr)#:(Nt.core_type_to_t ty)
-  | _ -> (lit_of_expr expr)#:Ty_unknown
+  | _ -> (
+      match lit_of_expr expr with
+      | AC c as l -> l#:(Syntax.constant_to_nt c)
+      | l -> l#:Ty_unknown)
 
 let of_expr = lit_of_expr
 let layout lit = string_of_expression @@ lit_to_expr lit
