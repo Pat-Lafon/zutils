@@ -107,26 +107,6 @@ let char_to_z3 ctx char = Seq.mk_char ctx (Char.code char)
 let str_to_z3 ctx str = Seq.mk_string ctx str
 let tp_to_sort env t = smt_tp_to_sort env (to_smtty t)
 
-(* A registered datatype whose sort hasn't been built into the env must crash
-   rather than fall through to an uninterpreted sort. *)
-let%test "tp_to_sort dies on a registered datatype missing from the env" =
-  let saved = !Z3decls.decl_registry in
-  Z3decls.decl_registry := [];
-  Z3decls.register_decl
-    { dt_name = "boxty"; ctors = [ { cname = "box"; fields = [] } ] };
-  let ctx = Z3.mk_context [] in
-  let env : Z3decls.z3_env =
-    { ctx; datatype_sorts = Hashtbl.create 1; funcs = Hashtbl.create 1 }
-  in
-  let raised =
-    try
-      ignore (tp_to_sort env (Ty_constructor ("boxty", [])));
-      false
-    with Failure _ -> true
-  in
-  Z3decls.decl_registry := saved;
-  raised
-
 let z3func (env : Z3decls.z3_env) funcname inptps outtp =
   FuncDecl.mk_func_decl env.ctx
     (Symbol.mk_string env.ctx funcname)
@@ -212,3 +192,49 @@ let mk_env ctx : z3_env =
   in
   List.iter (register_sort env) (registered_decls ());
   env
+
+(* The facts an uninterpreted sort could not give. *)
+let%test_module "datatype encoding" =
+  (module struct
+    let ilist = Ty_constructor ("ilist", [])
+    let ctx = Z3.mk_context []
+
+    let () =
+      ZUtilsConfig.(set (Result.get_ok (of_yojson (`Assoc []))));
+      register_decl
+        {
+          dt_name = "ilist";
+          ctors =
+            [
+              { cname = "nil"; fields = [] };
+              {
+                cname = "cons";
+                fields =
+                  [
+                    { fname = "head"; ftype = int_ty };
+                    { fname = "tail"; ftype = ilist };
+                  ];
+              };
+            ];
+        }
+
+    let env = mk_env ctx
+
+    let%test "a list datatype encodes as a recursive sort" =
+      let apply name args =
+        match func_lookup env name with
+        | Some fd -> FuncDecl.apply fd args
+        | None -> _die_with [%here] (spf "%s is not registered" name)
+      in
+      let l = Expr.mk_const_s ctx "l" (tp_to_sort env ilist) in
+      let cell = apply "cons" [ int_to_z3 ctx 1; l ] in
+      let entails e =
+        let solver = Z3.Solver.mk_solver ctx None in
+        Z3.Solver.add solver [ mk_not ctx e ];
+        Z3.Solver.check solver [] = Z3.Solver.UNSATISFIABLE
+      in
+      entails (apply "is_cons" [ cell ])
+      && entails (mk_eq ctx (apply "head" [ cell ]) (int_to_z3 ctx 1))
+      && entails (mk_eq ctx (apply "tail" [ cell ]) l)
+      && entails (mk_not ctx (mk_eq ctx cell l))
+  end)
