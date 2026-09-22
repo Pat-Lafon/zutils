@@ -14,31 +14,27 @@ let find_const_in_model m x =
         String.equal name x)
       cs
   in
-  match i with Some i -> Some (Z3.FuncDecl.apply i []) | None -> None
+  Option.map (fun i -> Z3.FuncDecl.apply i []) i
 
 let get_int_by_name m x =
-  let i = find_const_in_model m x in
-  match i with
-  | None -> None
-  | Some i -> (
+  Option.map
+    (fun i ->
       match Z3.Model.eval m i false with
       | None -> _die_with [%here] "get_int"
-      | Some v ->
-          Some (int_of_string @@ Z3.Arithmetic.Integer.numeral_to_string v))
+      | Some v -> int_of_string @@ Z3.Arithmetic.Integer.numeral_to_string v)
+    (find_const_in_model m x)
 
 let get_string_by_name m x =
-  let i = find_const_in_model m x in
-  match i with
-  | None -> None
-  | Some i -> (
+  Option.map
+    (fun i ->
       match Z3.Model.eval m i false with
       | None -> _die_with [%here] "get_string"
       | Some v ->
           let str = Expr.to_string v in
           let str = List.of_seq @@ String.to_seq str in
           let str = List.filter (fun c -> not (Char.equal c '"')) str in
-          let str = String.of_seq @@ List.to_seq str in
-          Some str)
+          String.of_seq @@ List.to_seq str)
+    (find_const_in_model m x)
 
 let tuple_field ctx n i = Symbol.mk_string ctx (spf "%s_%i" n i)
 
@@ -195,7 +191,7 @@ let register_sort (env : z3_env) (decl : datatype_decl) : unit =
     Datatype.mk_sort_s env.ctx decl.dt_name
       (List.map (build_constructor env decl) decl.ctors)
   in
-  Hashtbl.replace env.datatype_sorts decl.dt_name sort;
+  Hashtbl.add env.datatype_sorts decl.dt_name sort;
   List.iter2
     (fun c fd -> register_func env c.cname fd)
     decl.ctors
