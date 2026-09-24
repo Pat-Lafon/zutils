@@ -107,8 +107,12 @@ let portfolio_entries ~functional_bodies axiom_body : Portfolio.entry list =
       query = wrap ~mbqi_only:true axiom_body;
     };
   ]
-  @ List.map
-      (fun body -> { Portfolio.label = "functional"; query = wrap body })
+  @ List.mapi
+      (fun i body ->
+        {
+          Portfolio.label = Printf.sprintf "functional_%i" i;
+          query = wrap body;
+        })
       functional_bodies
 
 let select_axioms prop =
