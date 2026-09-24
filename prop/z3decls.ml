@@ -31,8 +31,7 @@ let find_decl (name : string) : datatype_decl option =
 
 let is_registered (name : string) : bool = Option.is_some (find_decl name)
 
-(* Registration order is source order, and OCaml requires a datatype be declared
-   before it is referenced, so a field's own datatype is always registered first. *)
+(* In source order: [mk_env] needs a field's datatype built before it. *)
 let registered_decls () : datatype_decl list = List.rev !decl_registry
 let recognizer_prefix = "is_"
 let recognizer_name (cname : string) : string = recognizer_prefix ^ cname
