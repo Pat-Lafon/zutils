@@ -97,14 +97,19 @@ let rec smt_tp_to_sort (env : Z3decls.z3_env) t =
       in
       Datatype.mk_sort_s ctx record_name [ constructor ]
 
-let int_to_z3 ctx i = mk_numeral_int ctx i (Integer.mk_sort ctx)
-let bool_to_z3 ctx b = if b then mk_true ctx else mk_false ctx
+let int_to_z3 (env : Z3decls.z3_env) i =
+  mk_numeral_int env.ctx i (Integer.mk_sort env.ctx)
+
+let bool_to_z3 (env : Z3decls.z3_env) b =
+  if b then mk_true env.ctx else mk_false env.ctx
 
 let float_to_z3 (env : Z3decls.z3_env) float =
   FloatingPoint.mk_numeral_f env.ctx float (smt_tp_to_sort env Smt_Float64)
 
-let char_to_z3 ctx char = Seq.mk_char ctx (Char.code char)
-let str_to_z3 ctx str = Seq.mk_string ctx str
+let char_to_z3 (env : Z3decls.z3_env) char =
+  Seq.mk_char env.ctx (Char.code char)
+
+let str_to_z3 (env : Z3decls.z3_env) str = Seq.mk_string env.ctx str
 let tp_to_sort env t = smt_tp_to_sort env (to_smtty t)
 
 let z3func (env : Z3decls.z3_env) funcname inptps outtp =
@@ -227,14 +232,14 @@ let%test_module "datatype encoding" =
         | None -> _die_with [%here] (spf "%s is not registered" name)
       in
       let l = Expr.mk_const_s ctx "l" (tp_to_sort env ilist) in
-      let cell = apply "cons" [ int_to_z3 ctx 1; l ] in
+      let cell = apply "cons" [ int_to_z3 env 1; l ] in
       let entails e =
         let solver = Z3.Solver.mk_solver ctx None in
         Z3.Solver.add solver [ mk_not ctx e ];
         Z3.Solver.check solver [] = Z3.Solver.UNSATISFIABLE
       in
       entails (apply "is_cons" [ cell ])
-      && entails (mk_eq ctx (apply "head" [ cell ]) (int_to_z3 ctx 1))
+      && entails (mk_eq ctx (apply "head" [ cell ]) (int_to_z3 env 1))
       && entails (mk_eq ctx (apply "tail" [ cell ]) l)
       && entails (mk_not ctx (mk_eq ctx cell l))
   end)
