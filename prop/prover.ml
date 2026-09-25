@@ -9,11 +9,7 @@ open ZUtilsConfig
 type smt_result = Portfolio.smt_result
 type prover = { ax_sys : laxiom_system; env : Z3decls.z3_env }
 
-let mk_prover () =
-  let ctx = mk_context [] in
-  let env = Z3aux.mk_env ctx in
-  { env; ax_sys = Axiom.emp }
-
+let mk_prover () = { env = Z3aux.mk_env (mk_context []); ax_sys = Axiom.emp }
 let _prover : prover option ref = ref None
 
 let get_prover () =
