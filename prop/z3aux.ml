@@ -156,7 +156,7 @@ open Z3decls
 
 (* A field of the datatype's own type is a forward reference to the sort being
    built, which Z3 spells as a [None] sort with sort_ref 0. *)
-let build_constructor (env : z3_env) (decl : datatype_decl) (ctor : ctor_spec) =
+let build_constructor env decl ctor =
   let ctx = env.ctx in
   let field_sort f =
     match f.ftype with
@@ -171,7 +171,7 @@ let build_constructor (env : z3_env) (decl : datatype_decl) (ctor : ctor_spec) =
 
 (* Z3 hands back the constructor, recognizer and accessor decls in declaration
    order; each is registered under the name the source gave it. *)
-let register_sort (env : z3_env) (decl : datatype_decl) : unit =
+let register_sort env decl =
   let sort =
     Datatype.mk_sort_s env.ctx decl.dt_name
       (List.map (build_constructor env decl) decl.ctors)
@@ -191,7 +191,7 @@ let register_sort (env : z3_env) (decl : datatype_decl) : unit =
     decl.ctors
     (Datatype.get_accessors sort)
 
-let mk_env ctx : z3_env =
+let mk_env ctx =
   let env =
     { ctx; datatype_sorts = Hashtbl.create 5; funcs = Hashtbl.create 5 }
   in
