@@ -78,21 +78,26 @@ let portfolio_entries axiom_body : Portfolio.entry list =
     | Some r -> Printf.sprintf "(set-option :rlimit %d)\n" r
     | None -> ""
   in
-  let wrap ?(mbqi_only = false) body =
+  let wrap ?(dt_eager = false) ?(mbqi_only = false) body =
+    let dt = if dt_eager then "(set-option :smt.dt_lazy_splits 0)\n" else "" in
     let mq =
       if mbqi_only then
         "(set-option :smt.ematching false)\n(set-option :smt.mbqi true)\n"
       else ""
     in
     Printf.sprintf
-      "%s(set-option :timeout %d)\n\
+      "%s%s(set-option :timeout %d)\n\
        %s%s\n\
        (check-sat)\n\
        (get-info :reason-unknown)\n"
-      mq timeout rlimit_opt body
+      dt mq timeout rlimit_opt body
   in
   [
     { Portfolio.label = "axiom"; query = wrap axiom_body };
+    {
+      Portfolio.label = "axiom_dt-eager";
+      query = wrap ~dt_eager:true axiom_body;
+    };
     {
       Portfolio.label = "axiom_mbqi-only";
       query = wrap ~mbqi_only:true axiom_body;

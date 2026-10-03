@@ -50,7 +50,13 @@ let mk_none_name ty = spf "None_%s" (layout_smtty ty)
 let rec smt_tp_to_sort env t =
   let ctx = env.ctx in
   match t with
-  | Smt_Uninterp name -> Sort.mk_uninterpreted_s ctx name
+  | Smt_Uninterp name -> (
+      match Hashtbl.find_opt env.datatype_sorts name with
+      | Some sort -> sort
+      | None when is_registered name ->
+          _die_with [%here]
+            (spf "registered datatype %s has no sort built in this ctx" name)
+      | None -> Sort.mk_uninterpreted_s ctx name)
   | Smt_Unit -> Enumeration.mk_sort_s ctx z3_unit_name [ z3_tt_name ]
   | Smt_Int -> Integer.mk_sort ctx
   | Smt_Bool -> Boolean.mk_sort ctx
@@ -100,22 +106,7 @@ let float_to_z3 env float =
 
 let char_to_z3 env char = Seq.mk_char env.ctx (Char.code char)
 let str_to_z3 env str = Seq.mk_string env.ctx str
-
-module NTMap = Map.Make (struct
-  type t = nt
-
-  let compare = compare_nt
-end)
-
-let smt_type_cache = ref NTMap.empty
-
-let tp_to_sort env t =
-  match NTMap.find_opt t !smt_type_cache with
-  | Some res -> res
-  | None ->
-      let res = smt_tp_to_sort env (to_smtty t) in
-      smt_type_cache := NTMap.add t res !smt_type_cache;
-      res
+let tp_to_sort env t = smt_tp_to_sort env (to_smtty t)
 
 let z3func env funcname inptps outtp =
   FuncDecl.mk_func_decl env.ctx
@@ -144,4 +135,92 @@ let z3expr_to_bool v =
   | Z3enums.L_FALSE -> false
   | Z3enums.L_UNDEF -> failwith "z3expr_to_bool"
 
-let mk_env ctx = { ctx }
+(* A field of the datatype's own type is a forward reference to the sort being
+   built, which Z3 spells as a [None] sort with sort_ref 0. *)
+let build_constructor env decl ctor =
+  let ctx = env.ctx in
+  let field_sort f =
+    match f.ftype with
+    | Ty_constructor (n, []) when n = decl.dt_name -> None
+    | ty -> Some (tp_to_sort env ty)
+  in
+  Datatype.mk_constructor_s ctx ctor.cname
+    (Symbol.mk_string ctx (recognizer_name ctor.cname))
+    (List.map (fun f -> Symbol.mk_string ctx f.fname) ctor.fields)
+    (List.map field_sort ctor.fields)
+    (List.map (fun _ -> 0) ctor.fields)
+
+(* Z3 hands back the constructor, recognizer and accessor decls in declaration
+   order; each is registered under the name the source gave it. *)
+let register_sort env decl =
+  let sort =
+    Datatype.mk_sort_s env.ctx decl.dt_name
+      (List.map (build_constructor env decl) decl.ctors)
+  in
+  Hashtbl.add env.datatype_sorts decl.dt_name sort;
+  List.iter2
+    (fun c fd -> register_func env c.cname fd)
+    decl.ctors
+    (Datatype.get_constructors sort);
+  List.iter2
+    (fun c fd -> register_func env (recognizer_name c.cname) fd)
+    decl.ctors
+    (Datatype.get_recognizers sort);
+  List.iter2
+    (fun c fds ->
+      List.iter2 (fun f fd -> register_func env f.fname fd) c.fields fds)
+    decl.ctors
+    (Datatype.get_accessors sort)
+
+let mk_env ctx =
+  let env =
+    { ctx; datatype_sorts = Hashtbl.create 5; funcs = Hashtbl.create 5 }
+  in
+  List.iter (register_sort env) (registered_decls ());
+  env
+
+(* The facts an uninterpreted sort could not give. *)
+let%test_module "datatype encoding" =
+  (module struct
+    let ilist = Ty_constructor ("ilist", [])
+    let ctx = Z3.mk_context []
+
+    let () =
+      ZUtilsConfig.(set (Result.get_ok (of_yojson (`Assoc []))));
+      register_decl
+        {
+          dt_name = "ilist";
+          ctors =
+            [
+              { cname = "nil"; fields = [] };
+              {
+                cname = "cons";
+                fields =
+                  [
+                    { fname = "head"; ftype = int_ty };
+                    { fname = "tail"; ftype = ilist };
+                  ];
+              };
+            ];
+        }
+
+    let env = mk_env ctx
+
+    let%test "a list datatype encodes as a recursive sort" =
+      let apply name args =
+        match func_lookup env name with
+        | Some fd -> FuncDecl.apply fd args
+        | None -> _die_with [%here] (spf "%s is not registered" name)
+      in
+      let l = Expr.mk_const_s ctx "l" (tp_to_sort env ilist) in
+      let cell = apply "cons" [ int_to_z3 env 1; l ] in
+      let entails e =
+        let solver = Z3.Solver.mk_solver ctx None in
+        Z3.Solver.add solver [ mk_not ctx e ];
+        Z3.Solver.check solver [] = Z3.Solver.UNSATISFIABLE
+      in
+      entails (apply "is_cons" [ cell ])
+      && entails (mk_eq ctx (apply "head" [ cell ]) (int_to_z3 env 1))
+      && entails (mk_eq ctx (apply "tail" [ cell ]) l)
+      && entails (mk_not ctx (mk_eq ctx cell l))
+  end)

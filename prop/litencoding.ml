@@ -80,7 +80,12 @@ let rec typed_lit_to_z3 (env : Z3decls.z3_env) lit =
       | "char_to_int", [ a ] -> Seq.mk_char_to_int ctx a
       | "char_le", [ a; b ] -> Seq.mk_char_le ctx a b
       | opname, args ->
-          let opname = spf "%s!%s" opname (Nt.layout op.ty) in
-          let argsty, retty = Nt.destruct_arr_tp op.ty in
-          let func = z3func env opname argsty retty in
+          let func =
+            match Z3decls.func_lookup env opname with
+            | Some fd -> fd
+            | None ->
+                (* A method predicate this env holds no definition for. *)
+                let argsty, retty = Nt.destruct_arr_tp op.ty in
+                z3func env (spf "%s!%s" opname (Nt.layout op.ty)) argsty retty
+          in
           Z3.FuncDecl.apply func args)
