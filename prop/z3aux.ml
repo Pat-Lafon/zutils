@@ -4,6 +4,7 @@ open Z3.Boolean
 open Z3.Arithmetic
 open Sugar
 open Normalty
+open Z3decls
 
 let find_const_in_model m x =
   let cs = Z3.Model.get_const_decls m in
@@ -46,13 +47,13 @@ let z3_tt_name = "tt"
 let mk_some_name ty = spf "Some_%s" (layout_smtty ty)
 let mk_none_name ty = spf "None_%s" (layout_smtty ty)
 
-let rec smt_tp_to_sort (env : Z3decls.z3_env) t =
+let rec smt_tp_to_sort env t =
   let ctx = env.ctx in
   match t with
   | Smt_Uninterp name -> (
       match Hashtbl.find_opt env.datatype_sorts name with
       | Some sort -> sort
-      | None when Z3decls.is_registered name ->
+      | None when is_registered name ->
           _die_with [%here]
             (spf "registered datatype %s has no sort built in this ctx" name)
       | None -> Sort.mk_uninterpreted_s ctx name)
@@ -97,22 +98,17 @@ let rec smt_tp_to_sort (env : Z3decls.z3_env) t =
       in
       Datatype.mk_sort_s ctx record_name [ constructor ]
 
-let int_to_z3 (env : Z3decls.z3_env) i =
-  mk_numeral_int env.ctx i (Integer.mk_sort env.ctx)
+let int_to_z3 env i = mk_numeral_int env.ctx i (Integer.mk_sort env.ctx)
+let bool_to_z3 env b = if b then mk_true env.ctx else mk_false env.ctx
 
-let bool_to_z3 (env : Z3decls.z3_env) b =
-  if b then mk_true env.ctx else mk_false env.ctx
-
-let float_to_z3 (env : Z3decls.z3_env) float =
+let float_to_z3 env float =
   FloatingPoint.mk_numeral_f env.ctx float (smt_tp_to_sort env Smt_Float64)
 
-let char_to_z3 (env : Z3decls.z3_env) char =
-  Seq.mk_char env.ctx (Char.code char)
-
-let str_to_z3 (env : Z3decls.z3_env) str = Seq.mk_string env.ctx str
+let char_to_z3 env char = Seq.mk_char env.ctx (Char.code char)
+let str_to_z3 env str = Seq.mk_string env.ctx str
 let tp_to_sort env t = smt_tp_to_sort env (to_smtty t)
 
-let z3func (env : Z3decls.z3_env) funcname inptps outtp =
+let z3func env funcname inptps outtp =
   FuncDecl.mk_func_decl env.ctx
     (Symbol.mk_string env.ctx funcname)
     (List.map (tp_to_sort env) inptps)
@@ -131,7 +127,7 @@ let rec has_uninterpreted_app (e : expr) : bool =
         (Quantifier.get_body (Quantifier.quantifier_of_expr e))
   | _ -> false
 
-let tpedvar_to_z3 (env : Z3decls.z3_env) (tp, name) =
+let tpedvar_to_z3 env (tp, name) =
   Expr.mk_const_s env.ctx name @@ tp_to_sort env tp
 
 let make_forall ctx qv body =
@@ -151,8 +147,6 @@ let z3expr_to_bool v =
   | Z3enums.L_TRUE -> true
   | Z3enums.L_FALSE -> false
   | Z3enums.L_UNDEF -> failwith "z3expr_to_bool"
-
-open Z3decls
 
 (* A field of the datatype's own type is a forward reference to the sort being
    built, which Z3 spells as a [None] sort with sort_ref 0. *)
