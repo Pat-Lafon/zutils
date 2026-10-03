@@ -86,6 +86,6 @@ let rec typed_lit_to_z3 (env : Z3decls.z3_env) lit =
             | None ->
                 (* A method predicate this env holds no definition for. *)
                 let argsty, retty = Nt.destruct_arr_tp op.ty in
-                z3func env (spf "%s!%s" opname (Nt.layout op.ty)) argsty retty
+                z3func env opname argsty retty
           in
           Z3.FuncDecl.apply func args)

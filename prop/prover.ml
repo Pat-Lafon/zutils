@@ -67,7 +67,7 @@ let dump_queries entries =
     entries
 
 (* The queries raced for one [check_sat] *)
-let portfolio_entries axiom_body : Portfolio.entry list =
+let portfolio_entries ~functional_bodies axiom_body : Portfolio.entry list =
   let timeout =
     match !_timeout with Some t -> t | None -> get_prover_timeout_bound ()
   in
@@ -103,6 +103,13 @@ let portfolio_entries axiom_body : Portfolio.entry list =
       query = wrap ~mbqi_only:true axiom_body;
     };
   ]
+  @ List.mapi
+      (fun i body ->
+        {
+          Portfolio.label = Printf.sprintf "functional_%i" i;
+          query = wrap body;
+        })
+      functional_bodies
 
 let select_axioms prop =
   let { ax_sys; _ } = get_prover () in
@@ -112,7 +119,7 @@ let all_axioms () =
   let { ax_sys; _ } = get_prover () in
   Axiom.all_axioms ax_sys
 
-let check_sat prop =
+let check_sat ?(functional_bodies = []) prop =
   incr query_counter;
   let { env; ax_sys } = get_prover () in
   let z3_axioms =
@@ -125,7 +132,7 @@ let check_sat prop =
     Pp.printf "@{<bold>QUERY:@}\n%s\n" (Expr.to_string query)
   in
   let body = serialize env (z3_axioms @ [ query ]) in
-  let entries = portfolio_entries body in
+  let entries = portfolio_entries ~functional_bodies body in
   dump_queries entries;
   let time_t, (res, winner) = Sugar.clock (fun () -> Portfolio.solve entries) in
   let () =
