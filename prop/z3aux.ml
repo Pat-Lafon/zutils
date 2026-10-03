@@ -4,6 +4,7 @@ open Z3.Boolean
 open Z3.Arithmetic
 open Sugar
 open Normalty
+open Z3decls
 
 let find_const_in_model m x =
   let cs = Z3.Model.get_const_decls m in
@@ -46,7 +47,8 @@ let z3_tt_name = "tt"
 let mk_some_name ty = spf "Some_%s" (layout_smtty ty)
 let mk_none_name ty = spf "None_%s" (layout_smtty ty)
 
-let rec smt_tp_to_sort ctx t =
+let rec smt_tp_to_sort env t =
+  let ctx = env.ctx in
   match t with
   | Smt_Uninterp name -> Sort.mk_uninterpreted_s ctx name
   | Smt_Unit -> Enumeration.mk_sort_s ctx z3_unit_name [ z3_tt_name ]
@@ -66,7 +68,7 @@ let rec smt_tp_to_sort ctx t =
       let constructor_some =
         Datatype.mk_constructor_s ctx some_name (mk_recog ctx some_name)
           [ Symbol.mk_string ctx (spf "get_%s" some_name) ]
-          [ Some (smt_tp_to_sort ctx smtnt) ]
+          [ Some (smt_tp_to_sort env smtnt) ]
           [ 0 ]
       in
       Datatype.mk_sort_s ctx option_name [ constructor_none; constructor_some ]
@@ -75,7 +77,7 @@ let rec smt_tp_to_sort ctx t =
       let n = List.length l in
       let sym = Symbol.mk_string ctx tuple_name in
       let syms = List.init n (fun i -> tuple_field ctx tuple_name i) in
-      let l = List.map (smt_tp_to_sort ctx) l in
+      let l = List.map (smt_tp_to_sort env) l in
       Tuple.mk_sort ctx sym syms l
   | Smt_record fields ->
       let record_name = layout_smtty t in
@@ -85,19 +87,19 @@ let rec smt_tp_to_sort ctx t =
           (spf "_constr%s" record_name)
           (mk_recog ctx record_name)
           (List.map (fun x -> Symbol.mk_string ctx x.x) fields)
-          (List.map (fun x -> Some (smt_tp_to_sort ctx x.ty)) fields)
+          (List.map (fun x -> Some (smt_tp_to_sort env x.ty)) fields)
           (List.init (List.length fields) (fun i -> i))
       in
       Datatype.mk_sort_s ctx record_name [ constructor ]
 
-let int_to_z3 ctx i = mk_numeral_int ctx i (Integer.mk_sort ctx)
-let bool_to_z3 ctx b = if b then mk_true ctx else mk_false ctx
+let int_to_z3 env i = mk_numeral_int env.ctx i (Integer.mk_sort env.ctx)
+let bool_to_z3 env b = if b then mk_true env.ctx else mk_false env.ctx
 
-let float_to_z3 ctx float =
-  FloatingPoint.mk_numeral_f ctx float (smt_tp_to_sort ctx Smt_Float64)
+let float_to_z3 env float =
+  FloatingPoint.mk_numeral_f env.ctx float (smt_tp_to_sort env Smt_Float64)
 
-let char_to_z3 ctx char = Seq.mk_char ctx (Char.code char)
-let str_to_z3 ctx str = Seq.mk_string ctx str
+let char_to_z3 env char = Seq.mk_char env.ctx (Char.code char)
+let str_to_z3 env str = Seq.mk_string env.ctx str
 
 module NTMap = Map.Make (struct
   type t = nt
@@ -107,21 +109,22 @@ end)
 
 let smt_type_cache = ref NTMap.empty
 
-let tp_to_sort ctx t =
+let tp_to_sort env t =
   match NTMap.find_opt t !smt_type_cache with
   | Some res -> res
   | None ->
-      let res = smt_tp_to_sort ctx (to_smtty t) in
+      let res = smt_tp_to_sort env (to_smtty t) in
       smt_type_cache := NTMap.add t res !smt_type_cache;
       res
 
-let z3func ctx funcname inptps outtp =
-  FuncDecl.mk_func_decl ctx
-    (Symbol.mk_string ctx funcname)
-    (List.map (tp_to_sort ctx) inptps)
-    (tp_to_sort ctx outtp)
+let z3func env funcname inptps outtp =
+  FuncDecl.mk_func_decl env.ctx
+    (Symbol.mk_string env.ctx funcname)
+    (List.map (tp_to_sort env) inptps)
+    (tp_to_sort env outtp)
 
-let tpedvar_to_z3 ctx (tp, name) = Expr.mk_const_s ctx name @@ tp_to_sort ctx tp
+let tpedvar_to_z3 env (tp, name) =
+  Expr.mk_const_s env.ctx name @@ tp_to_sort env tp
 
 let make_forall ctx qv body =
   if List.length qv == 0 then body
@@ -140,3 +143,5 @@ let z3expr_to_bool v =
   | Z3enums.L_TRUE -> true
   | Z3enums.L_FALSE -> false
   | Z3enums.L_UNDEF -> failwith "z3expr_to_bool"
+
+let mk_env ctx = { ctx }

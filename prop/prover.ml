@@ -7,9 +7,9 @@ open ZUtilsConfig
 (* Constructors stay in [Portfolio]; a match on a [check_sat] result resolves
    them from the scrutinee's type. *)
 type smt_result = Portfolio.smt_result
-type prover = { ax_sys : laxiom_system; ctx : context }
+type prover = { ax_sys : laxiom_system; env : Z3decls.z3_env }
 
-let mk_prover () = { ctx = mk_context []; ax_sys = Axiom.emp }
+let mk_prover () = { env = Z3aux.mk_env (mk_context []); ax_sys = Axiom.emp }
 let _prover : prover option ref = ref None
 
 let get_prover () =
@@ -47,8 +47,8 @@ let update_axioms axioms =
   let p = get_prover () in
   _prover := Some { p with ax_sys = Axiom.add_laxioms p.ax_sys axioms }
 
-let serialize (ctx : context) (exprs : Expr.expr list) : string =
-  let solver = mk_solver ctx None in
+let serialize (env : Z3decls.z3_env) (exprs : Expr.expr list) : string =
+  let solver = mk_solver env.ctx None in
   Solver.add solver exprs;
   Solver.to_string solver
 
@@ -109,17 +109,17 @@ let all_axioms () =
 
 let check_sat prop =
   incr query_counter;
-  let { ctx; ax_sys } = get_prover () in
+  let { env; ax_sys } = get_prover () in
   let z3_axioms =
-    List.map (fun (_, p) -> Propencoding.to_z3 ctx p)
+    List.map (fun (_, p) -> Propencoding.to_z3 env p)
     @@ Axiom.find_axioms ax_sys prop
   in
-  let query = Propencoding.to_z3 ctx prop in
+  let query = Propencoding.to_z3 env prop in
   let _ =
     ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>QUERY:@}\n%s\n" (Expr.to_string query)
   in
-  let body = serialize ctx (z3_axioms @ [ query ]) in
+  let body = serialize env (z3_axioms @ [ query ]) in
   let entries = portfolio_entries body in
   dump_queries entries;
   let time_t, (res, winner) = Sugar.clock (fun () -> Portfolio.solve entries) in
