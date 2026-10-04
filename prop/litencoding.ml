@@ -4,8 +4,7 @@ open Syntax
 open Sugar
 open Constencoding
 
-let rec typed_lit_to_z3 (env : Z3decls.z3_env) lit =
-  let ctx = env.ctx in
+let rec typed_lit_to_z3 ctx lit =
   let () =
     ZUtilsLog.z3encode @@ fun () ->
     Printf.printf "lit encoding: %s : %s\n" (Front.layout_lit lit.x)
@@ -14,31 +13,31 @@ let rec typed_lit_to_z3 (env : Z3decls.z3_env) lit =
   match lit.x with
   | ATu lits ->
       Z3.FuncDecl.apply
-        (Tuple.get_mk_decl (tp_to_sort env lit.ty))
-        (List.map (typed_lit_to_z3 env) lits)
+        (Tuple.get_mk_decl (tp_to_sort ctx lit.ty))
+        (List.map (typed_lit_to_z3 ctx) lits)
   | AProj (lit, n) ->
       let () =
         ZUtilsLog.z3encode @@ fun () ->
         Printf.printf "lit encoding: AProj : %s\n" (Nt.layout lit.ty)
       in
       Z3.FuncDecl.apply
-        (List.nth (Tuple.get_field_decls (tp_to_sort env lit.ty)) n)
-        [ typed_lit_to_z3 env lit ]
+        (List.nth (Tuple.get_field_decls (tp_to_sort ctx lit.ty)) n)
+        [ typed_lit_to_z3 ctx lit ]
   | ARecord _ ->
       let constructor =
-        List.nth (Datatype.get_constructors (tp_to_sort env lit.ty)) 0
+        List.nth (Datatype.get_constructors (tp_to_sort ctx lit.ty)) 0
       in
       let args = as_lit_record [%here] lit.x in
       Z3.FuncDecl.apply constructor
-        (List.map (fun (_, x) -> typed_lit_to_z3 env x) args)
+        (List.map (fun (_, x) -> typed_lit_to_z3 ctx x) args)
   | AField (lit, n) ->
       let accessors =
-        List.nth (Datatype.get_accessors (tp_to_sort env lit.ty)) 0
+        List.nth (Datatype.get_accessors (tp_to_sort ctx lit.ty)) 0
       in
       let idx = Nt.get_field_idx [%here] lit.ty n in
-      Z3.FuncDecl.apply (List.nth accessors idx) [ typed_lit_to_z3 env lit ]
-  | AC c -> constant_to_z3 env c
-  | AVar x -> tpedvar_to_z3 env (x.ty, x.x)
+      Z3.FuncDecl.apply (List.nth accessors idx) [ typed_lit_to_z3 ctx lit ]
+  | AC c -> constant_to_z3 ctx c
+  | AVar x -> tpedvar_to_z3 ctx (x.ty, x.x)
   | AAppOp (op, args) -> (
       let () =
         ZUtilsLog.z3encode @@ fun () ->
@@ -47,7 +46,7 @@ let rec typed_lit_to_z3 (env : Z3decls.z3_env) lit =
              (fun l -> spf "%s:%s" (Front.layout_lit l.x) (Nt.layout l.ty))
              args)
       in
-      let args = List.map (typed_lit_to_z3 env) args in
+      let args = List.map (typed_lit_to_z3 ctx) args in
       let () =
         ZUtilsLog.z3encode @@ fun () ->
         Pp.printf "app (%s:%s) on %s\n" op.x (Nt.layout op.ty)
@@ -56,12 +55,12 @@ let rec typed_lit_to_z3 (env : Z3decls.z3_env) lit =
       match (op.x, args) with
       | "None", [] ->
           let constructor =
-            List.nth (Datatype.get_constructors (tp_to_sort env lit.ty)) 0
+            List.nth (Datatype.get_constructors (tp_to_sort ctx lit.ty)) 0
           in
           Z3.FuncDecl.apply constructor []
       | "Some", [ a ] ->
           let constructor =
-            List.nth (Datatype.get_constructors (tp_to_sort env lit.ty)) 1
+            List.nth (Datatype.get_constructors (tp_to_sort ctx lit.ty)) 1
           in
           Z3.FuncDecl.apply constructor [ a ]
       | "==", [ a; b ] -> Boolean.mk_eq ctx a b
@@ -81,11 +80,11 @@ let rec typed_lit_to_z3 (env : Z3decls.z3_env) lit =
       | "char_le", [ a; b ] -> Seq.mk_char_le ctx a b
       | opname, args ->
           let func =
-            match Z3decls.func_lookup env opname with
+            match func_lookup ctx opname with
             | Some fd -> fd
             | None ->
-                (* A method predicate this env holds no definition for. *)
-                let argsty, retty = Nt.destruct_arr_tp op.ty in
-                z3func env opname argsty retty
+                (* A method predicate this context holds no definition for. *)
+                let arg_tys, ret_ty = Nt.destruct_arr_tp op.ty in
+                z3func ctx opname arg_tys ret_ty
           in
           Z3.FuncDecl.apply func args)

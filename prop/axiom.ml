@@ -89,7 +89,7 @@ let gather_indicator_types query axioms =
       StrSet.empty axioms
   in
   let relevant_preds =
-    List.filter (fun x -> StrSet.mem x.x preds_in_aximos) typed_preds
+    List.filter (fun x -> StrSet.mem x.x preds_in_axioms) typed_preds
   in
   let indicator_types =
     List.slow_rm_dup Nt.equal_nt
