@@ -83,13 +83,13 @@ type inst_res = Mono | NoPoly | PolyAss of Nt.t
 
 let gather_indicator_types query axioms =
   let typed_preds = get_tfv_preds_from_prop query in
-  let preds_in_aximos =
+  let preds_in_axioms =
     List.fold_left
       (fun s (_, { preds; _ }) -> StrSet.union preds s)
       StrSet.empty axioms
   in
   let relevant_preds =
-    List.filter (fun x -> StrSet.mem x.x preds_in_aximos) typed_preds
+    List.filter (fun x -> StrSet.mem x.x preds_in_axioms) typed_preds
   in
   let indicator_types =
     List.slow_rm_dup Nt.equal_nt
