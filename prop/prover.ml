@@ -52,6 +52,10 @@ let serialize (ctx : context) (exprs : Expr.expr list) : string =
   Solver.add solver exprs;
   Solver.to_string solver
 
+let declares_datatype body =
+  String.split_on_char '\n' body
+  |> List.exists (String.starts_with ~prefix:"(declare-datatype")
+
 let dump_queries entries =
   ZUtilsLog.dump_smt @@ fun _ ->
   List.iter
@@ -92,17 +96,25 @@ let portfolio_entries ~functional_bodies axiom_body : Portfolio.entry list =
        (get-info :reason-unknown)\n"
       dt mq timeout rlimit_opt body
   in
-  [
-    { Portfolio.label = "axiom"; query = wrap axiom_body };
-    {
-      Portfolio.label = "axiom_dt-eager";
-      query = wrap ~dt_eager:true axiom_body;
-    };
-    {
-      Portfolio.label = "axiom_mbqi-only";
-      query = wrap ~mbqi_only:true axiom_body;
-    };
-  ]
+  (* [dt_lazy_splits] only steers datatype case splits, so a body without a
+     datatype would race a copy of [axiom]. *)
+  let dt_eager =
+    if declares_datatype axiom_body then
+      [
+        {
+          Portfolio.label = "axiom_dt-eager";
+          query = wrap ~dt_eager:true axiom_body;
+        };
+      ]
+    else []
+  in
+  ({ Portfolio.label = "axiom"; query = wrap axiom_body } :: dt_eager)
+  @ [
+      {
+        Portfolio.label = "axiom_mbqi-only";
+        query = wrap ~mbqi_only:true axiom_body;
+      };
+    ]
   @ List.mapi
       (fun i body ->
         {
