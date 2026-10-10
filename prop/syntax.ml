@@ -250,10 +250,24 @@ let rec subst_prop (string_x : string) f (prop_e : 't prop) =
       Iff (subst_prop string_x f _tprop0, subst_prop string_x f _tprop1)
   | Forall { qv; body } ->
       if String.equal qv.x string_x then Forall { qv; body }
-      else Forall { qv; body = subst_prop string_x f body }
+      else
+        let qv, body = avoid_capture string_x f qv body in
+        Forall { qv; body = subst_prop string_x f body }
   | Exists { qv; body } ->
       if String.equal qv.x string_x then Exists { qv; body }
-      else Exists { qv; body = subst_prop string_x f body }
+      else
+        let qv, body = avoid_capture string_x f qv body in
+        Exists { qv; body = subst_prop string_x f body }
+
+(* Renames [qv] when the term replacing [string_x] in [body] mentions it, so the
+   substitution cannot capture that name. *)
+and avoid_capture string_x f qv body =
+  match List.find_opt (fun y -> String.equal y.x string_x) (fv_prop body) with
+  | Some occ when List.exists (fun y -> String.equal y.x qv.x) (fv_lit (f occ))
+    ->
+      let qv' = qv#->Rename.unique in
+      (qv', subst_prop qv.x (fun _ -> AVar qv') body)
+  | _ -> (qv, body)
 
 and typed_subst_prop (string_x : string) f (prop_e : ('t, 't prop) typed) =
   prop_e#->(subst_prop string_x f)
@@ -791,3 +805,9 @@ let snf_quantified_var_by_name name =
     | Not e -> Not (aux e)
   in
   aux
+
+let%test "substituting a term that names a binder renames the binder" =
+  let u = "u"#:Nt.int_ty and x = "x"#:Nt.int_ty in
+  let body = lit_to_prop (mk_int_l1_eq_l2 (AVar x) (AVar u)) in
+  let res = subst_prop_instance x.x (AVar u) (Exists { qv = u; body }) in
+  List.exists (fun y -> String.equal y.x "u") (fv_prop res)
