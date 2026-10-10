@@ -2,41 +2,6 @@ open Z3
 open Z3aux
 open Syntax
 open Sugar
-open Zdatatype
-
-let unique_quantifiers prop =
-  let rec aux prop =
-    match prop with
-    | Exists { body; qv } | Forall { body; qv } ->
-        let* m = aux body in
-        if StrSet.mem qv.x m then (
-          ( ZUtilsLog.queries @@ fun () ->
-            Printf.printf "prop %s\n" (Front.layout_prop prop);
-            Printf.printf "duplicate quantifier %s\n" qv.x );
-          None)
-        else Some (StrSet.add qv.x m)
-    | And l | Or l -> aux_multi l
-    | Implies (e1, e2) -> aux_multi [ e1; e2 ]
-    | Lit _ -> Some StrSet.empty
-    | Iff (e1, e2) -> aux_multi [ e1; e2 ]
-    | Ite (e1, e2, e3) -> aux_multi [ e1; e2; e3 ]
-    | Not e -> aux e
-  and aux_multi l =
-    List.fold_left
-      (fun m m' ->
-        let* m = m in
-        let* m' = m' in
-        let res = StrSet.union m m' in
-        if StrSet.cardinal res != StrSet.cardinal m + StrSet.cardinal m' then (
-          (let layout m = StrList.to_string @@ StrSet.to_list m in
-           ZUtilsLog.queries @@ fun () ->
-           Printf.printf "[%s] ?= [%s] + [%s]\n" (layout res) (layout m)
-             (layout m'));
-          None)
-        else Some res)
-      (Some StrSet.empty) (List.map aux l)
-  in
-  match aux prop with None -> false | Some _ -> true
 
 let to_z3 ctx prop =
   let rec aux prop =
@@ -64,10 +29,38 @@ let to_z3 ctx prop =
         make_exists ctx [ tpedvar_to_z3 ctx (qv.ty, qv.x) ] (aux body)
     | Lit lit -> Litencoding.typed_lit_to_z3 ctx lit
   in
-  let () = _assert [%here] "sanity check" (unique_quantifiers prop) in
   let p1 = to_nnf prop in
   let () =
     ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>To NNF:@} %s\n" (Front.layout_prop p1)
   in
   aux p1
+
+(* Z3 binds each quantifier by abstracting its constant out of the body, so a
+   binder name reused by a sibling or an inner quantifier needs no renaming. *)
+let%test_module "repeated binder names" =
+  (module struct
+    let () = ZUtilsConfig.(set (Result.get_ok (of_yojson (`Assoc []))))
+    let ctx = Z3.mk_context []
+    let u = "u"#:Nt.int_ty
+    let eq i = lit_to_prop (mk_int_l1_eq_l2 (AVar u) (AC (I i)))
+
+    let check p =
+      let s = Z3.Solver.mk_solver ctx None in
+      Z3.Solver.add s [ to_z3 ctx p ];
+      Z3.Solver.check s []
+
+    let%test "siblings" =
+      check
+        (And [ Exists { qv = u; body = eq 1 }; Exists { qv = u; body = eq 2 } ])
+      = Z3.Solver.SATISFIABLE
+
+    let%test "an inner binder shadows an outer one" =
+      check
+        (Exists { qv = u; body = And [ eq 1; Exists { qv = u; body = eq 2 } ] })
+      = Z3.Solver.SATISFIABLE
+
+    let%test "a shadowing exists under a forall" =
+      check (Not (Forall { qv = u; body = Exists { qv = u; body = eq 2 } }))
+      = Z3.Solver.UNSATISFIABLE
+  end)
