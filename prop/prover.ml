@@ -3,10 +3,14 @@ open Solver
 open Sugar
 open Syntax
 open ZUtilsConfig
+open Zdatatype
 
-(* Constructors stay in [Portfolio]; a match on a [check_sat] result resolves
-   them from the scrutinee's type. *)
-type smt_result = Portfolio.smt_result
+type smt_result = Portfolio.smt_result =
+  | SmtSat
+  | SmtUnsat
+  | Unknown of string option
+
+type valid_result = SmtValid | SmtInvalid | Unknown of string option
 type prover = { ax_sys : laxiom_system; ctx : context }
 
 let mk_prover () = { ctx = mk_context []; ax_sys = Axiom.emp }
@@ -131,8 +135,18 @@ let all_axioms () =
   let { ax_sys; _ } = get_prover () in
   Axiom.all_axioms ax_sys
 
-let check_sat ?(functional_bodies = []) prop =
+let report_unclosed loc query =
+  let fvs = fv_prop query in
+  _assert loc
+    (spf "the query has free variables %s"
+       (List.split_by_comma
+          (function { x; ty } -> spf "%s:%s" x (Nt.layout ty))
+          fvs))
+    (0 == List.length fvs)
+
+let check_sat ?(functional_bodies = fun _ -> []) loc prop =
   incr query_counter;
+  let () = report_unclosed loc prop in
   let { ctx; ax_sys } = get_prover () in
   let z3_axioms =
     List.map (fun (_, p) -> Propencoding.to_z3 ctx p)
@@ -144,7 +158,9 @@ let check_sat ?(functional_bodies = []) prop =
     Pp.printf "@{<bold>QUERY:@}\n%s\n" (Expr.to_string query)
   in
   let body = serialize ctx (z3_axioms @ [ query ]) in
-  let entries = portfolio_entries ~functional_bodies body in
+  let entries =
+    portfolio_entries ~functional_bodies:(functional_bodies prop) body
+  in
   dump_queries entries;
   let time_t, (res, winner) = Sugar.clock (fun () -> Portfolio.solve entries) in
   let () =
@@ -166,3 +182,33 @@ let coercion_hint = function
       "raise the prover timeout first, then debug the query"
   | Some r -> Printf.sprintf "z3 reason-unknown: %s" r
   | None -> "z3 gave no reason-unknown"
+
+let record_nondecisive ~reason ~coerced_to =
+  ZUtilsLog.queries @@ fun () ->
+  Printf.eprintf
+    "[non-decisive Z3 verdict] q%i: timeout/unknown coerced to %s; %s.\n"
+    !query_counter coerced_to (coercion_hint reason)
+
+let check_valid ?functional_bodies loc query =
+  match check_sat ?functional_bodies loc (smart_not query) with
+  | SmtUnsat -> SmtValid
+  | SmtSat -> SmtInvalid
+  | Unknown reason -> Unknown reason
+
+let check_sat_bool ?functional_bodies loc query ~coerce_to =
+  let coerce_desc = if coerce_to then "inhabited" else "uninhabited" in
+  match check_sat ?functional_bodies loc query with
+  | SmtSat -> true
+  | SmtUnsat -> false
+  | Unknown reason ->
+      record_nondecisive ~reason ~coerced_to:coerce_desc;
+      coerce_to
+
+let check_valid_bool ?functional_bodies loc query ~coerce_to =
+  let coerce_desc = if coerce_to then "valid" else "invalid" in
+  match check_valid ?functional_bodies loc query with
+  | SmtValid -> true
+  | SmtInvalid -> false
+  | Unknown reason ->
+      record_nondecisive ~reason ~coerced_to:coerce_desc;
+      coerce_to
