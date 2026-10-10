@@ -43,3 +43,17 @@ let register_decl d =
   in
   reject (names_of d);
   decl_registry := d :: !decl_registry
+
+let exists_ctor p = List.exists (fun d -> List.exists p d.ctors) !decl_registry
+
+let is_dt_accessor opname =
+  exists_ctor (fun c ->
+      List.exists (fun f -> String.equal f.fname opname) c.fields)
+
+let recognizer_ctor opname =
+  if String.starts_with ~prefix:recognizer_prefix opname then
+    let n = String.length recognizer_prefix in
+    let cname = String.sub opname n (String.length opname - n) in
+    if exists_ctor (fun c -> String.equal c.cname cname) then Some cname
+    else None
+  else None

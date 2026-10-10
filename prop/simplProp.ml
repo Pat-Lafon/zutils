@@ -210,10 +210,22 @@ let simpl_query_by_eq (query : Nt.t prop) =
         match find_eq_lit_in_prop qv.x body with
         | None -> Exists { body; qv }
         | Some lit ->
-            let body = subst_prop_instance qv.x lit.x body in
-            let body = simpl_eq_in_prop body in
-            let body = simpl_no_used_quantifiers body in
-            body)
+            (* Leave [exists x. x == head l && P x] as it is rather than
+               inlining it to [P (head l)]. [head] is undefined on [nil], so
+               the Lean and Rocq renderings of a query give it an [Option t]
+               return: the equality still type-checks, with [x] coerced to
+               [Some x], but [P (head l)] does not. *)
+            let is_accessor_app =
+              match lit.x with
+              | AAppOp (op, _) -> Z3decls.is_dt_accessor op.x
+              | _ -> false
+            in
+            if is_accessor_app then Exists { body; qv }
+            else
+              let body = subst_prop_instance qv.x lit.x body in
+              let body = simpl_eq_in_prop body in
+              let body = simpl_no_used_quantifiers body in
+              body)
     | Forall { body; qv } -> Forall { body = aux body; qv }
     | And l -> smart_and (List.map aux l)
     | Or l -> smart_or (List.map aux l)
