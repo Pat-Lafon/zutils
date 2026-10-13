@@ -5,38 +5,39 @@ open Z3.Arithmetic
 open Sugar
 open Normalty
 
-let find_const_in_model m x =
-  let cs = Z3.Model.get_const_decls m in
-  let i =
+let find_const_in_model model name =
+  let decls = Z3.Model.get_const_decls model in
+  let decl =
     List.find_opt
       (fun d ->
-        let name = Z3.Symbol.to_string @@ Z3.FuncDecl.get_name d in
-        String.equal name x)
-      cs
+        String.equal name (Z3.Symbol.to_string @@ Z3.FuncDecl.get_name d))
+      decls
   in
-  Option.map (fun i -> Z3.FuncDecl.apply i []) i
+  Option.map (fun d -> Z3.FuncDecl.apply d []) decl
 
-let get_int_by_name m x =
+let get_int_by_name model name =
   Option.map
-    (fun i ->
-      match Z3.Model.eval m i false with
+    (fun const ->
+      match Z3.Model.eval model const false with
       | None -> _die_with [%here] "get_int"
-      | Some v -> int_of_string @@ Z3.Arithmetic.Integer.numeral_to_string v)
-    (find_const_in_model m x)
+      | Some value ->
+          int_of_string @@ Z3.Arithmetic.Integer.numeral_to_string value)
+    (find_const_in_model model name)
 
-let get_string_by_name m x =
+let get_string_by_name model name =
   Option.map
-    (fun i ->
-      match Z3.Model.eval m i false with
+    (fun const ->
+      match Z3.Model.eval model const false with
       | None -> _die_with [%here] "get_string"
-      | Some v ->
-          let str = Expr.to_string v in
+      | Some value ->
+          let str = Expr.to_string value in
           let str = List.of_seq @@ String.to_seq str in
           let str = List.filter (fun c -> not (Char.equal c '"')) str in
           String.of_seq @@ List.to_seq str)
-    (find_const_in_model m x)
+    (find_const_in_model model name)
 
-let tuple_field ctx n i = Symbol.mk_string ctx (spf "%s_%i" n i)
+let tuple_field ctx tuple_name idx =
+  Symbol.mk_string ctx (spf "%s_%i" tuple_name idx)
 
 open Zdatatype
 
@@ -56,8 +57,8 @@ type env = {
 (* Z3 sorts and declarations are bound to the context that built them. *)
 let envs : (context * env) list ref = ref []
 
-let rec smt_tp_to_sort ctx t =
-  match t with
+let rec smt_tp_to_sort ctx ty =
+  match ty with
   | Smt_Uninterp name -> (
       let built =
         Option.bind (List.assq_opt ctx !envs) (fun env ->
@@ -75,10 +76,10 @@ let rec smt_tp_to_sort ctx t =
   | Smt_Char -> Seq.mk_char_sort ctx
   | Smt_String -> Seq.mk_string_sort ctx
   | Smt_Float64 -> FloatingPoint.mk_sort_64 ctx
-  | Smt_option smtnt ->
-      let option_name = layout_smtty t in
-      let some_name = mk_some_name smtnt in
-      let none_name = mk_none_name smtnt in
+  | Smt_option elem_ty ->
+      let option_name = layout_smtty ty in
+      let some_name = mk_some_name elem_ty in
+      let none_name = mk_none_name elem_ty in
       let constructor_none =
         Datatype.mk_constructor_s ctx none_name (mk_recog ctx none_name) [] []
           []
@@ -86,19 +87,20 @@ let rec smt_tp_to_sort ctx t =
       let constructor_some =
         Datatype.mk_constructor_s ctx some_name (mk_recog ctx some_name)
           [ Symbol.mk_string ctx (spf "get_%s" some_name) ]
-          [ Some (smt_tp_to_sort ctx smtnt) ]
+          [ Some (smt_tp_to_sort ctx elem_ty) ]
           [ 0 ]
       in
       Datatype.mk_sort_s ctx option_name [ constructor_none; constructor_some ]
-  | Smt_tuple l ->
-      let tuple_name = layout_smtty t in
-      let n = List.length l in
+  | Smt_tuple elem_tys ->
+      let tuple_name = layout_smtty ty in
       let sym = Symbol.mk_string ctx tuple_name in
-      let syms = List.init n (fun i -> tuple_field ctx tuple_name i) in
-      let l = List.map (smt_tp_to_sort ctx) l in
-      Tuple.mk_sort ctx sym syms l
+      let field_syms =
+        List.mapi (fun i _ -> tuple_field ctx tuple_name i) elem_tys
+      in
+      let elem_sorts = List.map (smt_tp_to_sort ctx) elem_tys in
+      Tuple.mk_sort ctx sym field_syms elem_sorts
   | Smt_record fields ->
-      let record_name = layout_smtty t in
+      let record_name = layout_smtty ty in
       let fields = sort_record fields in
       let constructor =
         Datatype.mk_constructor_s ctx
@@ -187,11 +189,11 @@ let tp_to_sort ctx ty =
       Hashtbl.add env.sorts ty sort;
       sort
 
-let z3func ctx funcname inptps outtp =
+let z3func ctx name arg_tys ret_ty =
   FuncDecl.mk_func_decl ctx
-    (Symbol.mk_string ctx funcname)
-    (List.map (tp_to_sort ctx) inptps)
-    (tp_to_sort ctx outtp)
+    (Symbol.mk_string ctx name)
+    (List.map (tp_to_sort ctx) arg_tys)
+    (tp_to_sort ctx ret_ty)
 
 (* Whether [e] applies a symbol the encoder left uninterpreted. Only [z3func]'s
    declarations are [OP_UNINTERPRETED]: a datatype's constructors, recognizers
@@ -206,19 +208,19 @@ let rec has_uninterpreted_app (e : expr) : bool =
         (Quantifier.get_body (Quantifier.quantifier_of_expr e))
   | _ -> false
 
-let tpedvar_to_z3 ctx (tp, name) = Expr.mk_const_s ctx name @@ tp_to_sort ctx tp
+let tpedvar_to_z3 ctx (ty, name) = Expr.mk_const_s ctx name @@ tp_to_sort ctx ty
 
-let make_forall ctx qv body =
-  if List.length qv == 0 then body
+let make_forall ctx vars body =
+  if List.length vars == 0 then body
   else
     Quantifier.expr_of_quantifier
-      (Quantifier.mk_forall_const ctx qv body (Some 1) [] [] None None)
+      (Quantifier.mk_forall_const ctx vars body (Some 1) [] [] None None)
 
-let make_exists ctx qv body =
-  if List.length qv == 0 then body
+let make_exists ctx vars body =
+  if List.length vars == 0 then body
   else
     Quantifier.expr_of_quantifier
-      (Quantifier.mk_exists_const ctx qv body (Some 1) [] [] None None)
+      (Quantifier.mk_exists_const ctx vars body (Some 1) [] [] None None)
 
 let z3expr_to_bool v =
   match Boolean.get_bool_value v with
