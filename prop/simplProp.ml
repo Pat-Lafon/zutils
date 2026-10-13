@@ -74,23 +74,15 @@ let instantiate_quantified_bool =
     | Exists { body; qv } ->
         let body = aux body in
         if Nt.equal_nt qv.ty Nt.bool_ty then
-          let body_true =
-            fresh_name_prop @@ subst_prop_instance qv.x mk_lit_true body
-          in
-          let body_false =
-            fresh_name_prop @@ subst_prop_instance qv.x mk_lit_false body
-          in
+          let body_true = subst_prop_instance qv.x mk_lit_true body in
+          let body_false = subst_prop_instance qv.x mk_lit_false body in
           simpl_eq_in_prop (smart_or [ body_true; body_false ])
         else Exists { body; qv }
     | Forall { body; qv } ->
         let body = aux body in
         if Nt.equal_nt qv.ty Nt.bool_ty then
-          let body_true =
-            fresh_name_prop @@ subst_prop_instance qv.x mk_lit_true body
-          in
-          let body_false =
-            fresh_name_prop @@ subst_prop_instance qv.x mk_lit_false body
-          in
+          let body_true = subst_prop_instance qv.x mk_lit_true body in
+          let body_false = subst_prop_instance qv.x mk_lit_false body in
           let () =
             ZUtilsLog.simpl_prop @@ fun () ->
             Printf.printf "body: %s\n" @@ Front.layout body;
@@ -319,7 +311,7 @@ let instantiate_quantified_option =
   in
   let auxaux ty qv body =
     let none = AAppOp ("None"#:qv.ty, []) in
-    let body_none = fresh_name_prop @@ subst_prop_instance qv.x none body in
+    let body_none = subst_prop_instance qv.x none body in
     let sm =
       AAppOp
         ("Some"#:(Nt.construct_arr_tp ([ ty ], qv.ty)), [ tv_to_lit qv.x#:ty ])
