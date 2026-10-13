@@ -49,7 +49,7 @@ let mk_none_name ty = spf "None_%s" (layout_smtty ty)
 type env = {
   sorts : (nt, Sort.sort) Hashtbl.t;
   datatypes : (string, Sort.sort) Hashtbl.t;
-  (* The datatypes' decls, by name. *)
+  (* The datatypes' decls and [register_func]'s, by name. *)
   funcs : (string, FuncDecl.func_decl) Hashtbl.t;
 }
 
@@ -176,6 +176,7 @@ let env_of ctx =
       env
 
 let func_lookup ctx name = Hashtbl.find_opt (env_of ctx).funcs name
+let register_func ctx name fd = add_func (env_of ctx) name fd
 
 let tp_to_sort ctx ty =
   let env = env_of ctx in
@@ -191,6 +192,19 @@ let z3func ctx funcname inptps outtp =
     (Symbol.mk_string ctx funcname)
     (List.map (tp_to_sort ctx) inptps)
     (tp_to_sort ctx outtp)
+
+(* Whether [e] applies a symbol the encoder left uninterpreted. Only [z3func]'s
+   declarations are [OP_UNINTERPRETED]: a datatype's constructors, recognizers
+   and accessors carry their own kinds, and a define-fun-rec is [OP_RECURSIVE]. *)
+let rec has_uninterpreted_app (e : expr) : bool =
+  match AST.get_ast_kind (ast_of_expr e) with
+  | APP_AST ->
+      FuncDecl.get_decl_kind (get_func_decl e) = OP_UNINTERPRETED
+      || List.exists has_uninterpreted_app (get_args e)
+  | QUANTIFIER_AST ->
+      has_uninterpreted_app
+        (Quantifier.get_body (Quantifier.quantifier_of_expr e))
+  | _ -> false
 
 let tpedvar_to_z3 ctx (tp, name) = Expr.mk_const_s ctx name @@ tp_to_sort ctx tp
 
