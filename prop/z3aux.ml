@@ -100,13 +100,21 @@ let rec smt_tp_to_sort ctx t =
   | Smt_record fields ->
       let record_name = layout_smtty t in
       let fields = sort_record fields in
+      (* Prefixed so a same-named program binder can't shadow the accessor in
+         the dumped query. *)
+      let field_syms =
+        List.map
+          (fun x -> Symbol.mk_string ctx (spf "%s_%s" record_name x.x))
+          fields
+      in
+      let field_sorts =
+        List.map (fun x -> Some (smt_tp_to_sort ctx x.ty)) fields
+      in
       let constructor =
         Datatype.mk_constructor_s ctx
           (spf "_constr%s" record_name)
-          (mk_recog ctx record_name)
-          (List.map (fun x -> Symbol.mk_string ctx x.x) fields)
-          (List.map (fun x -> Some (smt_tp_to_sort ctx x.ty)) fields)
-          (List.init (List.length fields) (fun i -> i))
+          (mk_recog ctx record_name) field_syms field_sorts
+          (List.mapi (fun i _ -> i) fields)
       in
       Datatype.mk_sort_s ctx record_name [ constructor ]
 
