@@ -115,8 +115,7 @@ let rec smt_tp_to_sort ctx ty =
       let constructor =
         Datatype.mk_constructor_s ctx
           (spf "_constr%s" record_name)
-          (mk_recog ctx record_name)
-          field_syms field_sorts
+          (mk_recog ctx record_name) field_syms field_sorts
           (List.mapi (fun i _ -> i) fields)
       in
       Datatype.mk_sort_s ctx record_name [ constructor ]
