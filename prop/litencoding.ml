@@ -65,6 +65,9 @@ let rec typed_lit_to_z3 ctx lit =
           Z3.FuncDecl.apply constructor [ a ]
       | "==", [ a; b ] -> Boolean.mk_eq ctx a b
       | "!=", [ a; b ] -> Boolean.mk_not ctx @@ Boolean.mk_eq ctx a b
+      | "&&", [ a; b ] -> Boolean.mk_and ctx [ a; b ]
+      | "||", [ a; b ] -> Boolean.mk_or ctx [ a; b ]
+      | "not", [ a ] -> Boolean.mk_not ctx a
       | "<=", [ a; b ] -> Arithmetic.mk_le ctx a b
       | ">=", [ a; b ] -> Arithmetic.mk_ge ctx a b
       | "<", [ a; b ] -> Arithmetic.mk_lt ctx a b
