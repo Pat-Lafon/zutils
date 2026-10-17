@@ -86,7 +86,6 @@ let rec typed_lit_to_z3 ctx lit =
             match func_lookup ctx opname with
             | Some fd -> fd
             | None ->
-                (* A method predicate this context holds no definition for. *)
                 let arg_tys, ret_ty = Nt.destruct_arr_tp op.ty in
                 z3func ctx opname arg_tys ret_ty
           in
