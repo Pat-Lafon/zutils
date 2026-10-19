@@ -184,25 +184,6 @@ let find_assignment_of_intvar lit x =
       | _, _ -> None)
   | _ -> None
 
-let rec get_non_unit_lit lit =
-  (* let () = *)
-  (*   Env.show_log "gather" @@ fun _ -> *)
-  (*   Printf.printf ">>>>> get_non_unit_lit: %s\n" *)
-  (*     (Sexplib.Sexp.to_string (sexp_of_lit lit.x)) *)
-  (* in *)
-  if Nt.equal_nt Nt.unit_ty lit.ty then None
-  else
-    match lit.x with
-    | AAppOp (_, args) -> (
-        (* let () = *)
-        (*   Env.show_log "gather" @@ fun _ -> *)
-        (*   Printf.printf ">>>>> %s: %s\n" (Op.to_string op.x) *)
-        (*     (List.split_by_comma (fun x -> layout x.ty) args) *)
-        (* in *)
-        let res = List.filter_map get_non_unit_lit args in
-        match res with [] -> None | _ -> Some lit.x)
-    | _ -> Some lit.x
-
 let get_op_args lit = match lit with AAppOp (_, args) -> args | _ -> []
 
 (** prop *)
@@ -437,29 +418,6 @@ let smart_exists qvs prop =
   let qvs = List.filter (fun x -> str_in_list x.x fvs) qvs in
   List.fold_right (fun qv body -> Exists { qv; body }) qvs prop
 
-let get_lits prop =
-  let rec aux e res =
-    match e with
-    | Lit { x = AC _; _ } -> res
-    | Lit lit -> (
-        let litopt = get_non_unit_lit lit in
-        match litopt with None -> res | Some lit -> lit :: res)
-    | Implies (e1, e2) -> aux e1 @@ aux e2 res
-    | Ite (e1, e2, e3) -> aux e1 @@ aux e2 @@ aux e3 res
-    | Not e -> aux e res
-    | And es -> List.fold_right aux es res
-    | Or es -> List.fold_right aux es res
-    | Iff (e1, e2) -> aux e1 @@ aux e2 res
-    | Forall _ -> _die [%here]
-    | Exists _ -> _die [%here]
-  in
-  let (lits : Nt.t lit list) = aux prop [] in
-  (* let () = *)
-  (*   Printf.printf ">>>>> get_lits: %s\n" *)
-  (*     (List.split_by_comma layout_sexp_lit lits) *)
-  (* in *)
-  Zdatatype.List.slow_rm_dup eq_lit lits
-
 let build_euf vars =
   let space = Hashtbl.create 10 in
   let () =
@@ -531,18 +489,6 @@ let gathered_rm_dup { global_lits; local_lits } =
     StrMap.map (fun (vs, lits) -> (vs, List.slow_rm_dup eq_lit lits)) local_lits
   in
   { global_lits; local_lits }
-
-let rec get_consts_from_lit = function
-  | AAppOp (_, args) -> List.concat_map get_consts_from_typed_lit args
-  | AC c -> [ c ]
-  | _ -> []
-
-and get_consts_from_typed_lit lit = get_consts_from_lit lit.x
-
-let get_consts prop =
-  let lits = get_lits prop in
-  let cs = List.concat_map get_consts_from_lit lits in
-  List.slow_rm_dup equal_constant cs
 
 let lit_to_prop lit = Lit lit#:(lit_to_nt lit)
 let msubst f = List.fold_right (fun (x, lit) -> f x lit)
