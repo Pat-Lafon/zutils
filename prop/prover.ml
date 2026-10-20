@@ -148,7 +148,9 @@ let all_axioms () =
 let serialize_all_axioms () =
   let { ctx; ax_sys } = get_prover () in
   serialize ctx
-    (List.map (fun (_, p) -> Propencoding.to_z3 ctx p) (Axiom.all_axioms ax_sys))
+    (List.map
+       (fun (_, p) -> Propencoding.to_z3 ctx p)
+       (Axiom.all_axioms ax_sys))
 
 let report_unclosed loc query =
   let fvs = fv_prop query in
@@ -157,7 +159,7 @@ let report_unclosed loc query =
        (List.split_by_comma
           (function { x; ty } -> spf "%s:%s" x (Nt.layout ty))
           fvs))
-    (0 == List.length fvs)
+    (0 = List.length fvs)
 
 let check_sat ?(functional_bodies = fun _ -> []) loc prop =
   incr query_counter;

@@ -6,6 +6,8 @@
  (wrapped true)
  (modules_without_implementation)
  (libraries sugar normalty unix ocamlParser ppxlib z3 zutilsConfig typectx)
+ (flags
+  (:standard -open Physical -alert @physical))
  (modules
   prop
   ast

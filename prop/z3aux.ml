@@ -205,13 +205,13 @@ let z3func ctx name arg_tys ret_ty =
 let tpedvar_to_z3 ctx (ty, name) = Expr.mk_const_s ctx name @@ tp_to_sort ctx ty
 
 let make_forall ctx vars body =
-  if List.length vars == 0 then body
+  if List.length vars = 0 then body
   else
     Quantifier.expr_of_quantifier
       (Quantifier.mk_forall_const ctx vars body (Some 1) [] [] None None)
 
 let make_exists ctx vars body =
-  if List.length vars == 0 then body
+  if List.length vars = 0 then body
   else
     Quantifier.expr_of_quantifier
       (Quantifier.mk_exists_const ctx vars body (Some 1) [] [] None None)

@@ -1,7 +1,9 @@
 (library
  (name zdatatype)
  (public_name zutils.zdatatype)
- (libraries core)
+ (libraries core physical)
+ (flags
+  (:standard -open Physical -alert @physical))
  (modules
   zarray
   zlabeled_tree

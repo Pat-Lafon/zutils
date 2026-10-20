@@ -74,7 +74,7 @@ let compare t1 t2 =
   in
   aux t1 t2
 
-let eq t1 t2 = compare t1 t2 == 0
+let eq t1 t2 = compare t1 t2 = 0
 let is_empty = function E -> true | _ -> false
 
 let merge h1 h2 =

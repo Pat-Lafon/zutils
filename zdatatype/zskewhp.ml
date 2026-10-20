@@ -8,7 +8,7 @@ exception Empty
 
 open Zlist
 
-let is_single_tree = function Node (_, _, _, t) -> List.length t == 0
+let is_single_tree = function Node (_, _, _, t) -> List.length t = 0
 let deep = List.length
 let deep_tree = function Node (_, _, _, l) -> 1 + deep l
 
@@ -124,7 +124,7 @@ let compare t1 t2 =
   in
   aux t1 t2
 
-let eq t1 t2 = compare t1 t2 == 0
+let eq t1 t2 = compare t1 t2 = 0
 let empty = []
 let is_empty ts = ts = []
 let rank (Node (r, _, _, _)) = r

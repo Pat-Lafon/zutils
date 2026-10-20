@@ -3,6 +3,8 @@
  (public_name zutils.sugar)
  (wrapped true)
  (modules assertion sugarAux json rename pp typed sugar)
+ (flags
+  (:standard -open Physical -alert @physical))
  (preprocess
   (pps
    ppx_here

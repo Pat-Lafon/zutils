@@ -15,7 +15,7 @@ let to_string (a, len1, b, len2, c) =
 let flatten (a, len1, b, len2, c) = a @ [ len1 ] @ Lazy.force b @ [ len2 ] @ c
 let length l = List.length @@ flatten l
 let compare t1 t2 = List.compare compare (flatten t1) (flatten t2)
-let eq t1 t2 = compare t1 t2 == 0
+let eq t1 t2 = compare t1 t2 = 0
 let empty = ([], 0, lazy [], 0, [])
 let is_empty (_, lenf, _, _, _) = lenf = 0
 let checkw = function [], lenf, f, lenr, r -> (!$f, lenf, f, lenr, r) | q -> q
