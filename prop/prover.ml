@@ -136,10 +136,6 @@ let portfolio_entries ~functional_bodies axiom_body : Portfolio.entry list =
         })
       functional_bodies
 
-let all_axioms () =
-  let { ax_sys; _ } = get_prover () in
-  Axiom.all_axioms ax_sys
-
 (* Every registered axiom, encoded and printed as [check_sat] sends them *)
 let serialize_all_axioms () =
   let { ctx; ax_sys } = get_prover () in
