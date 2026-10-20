@@ -185,9 +185,11 @@ let check_sat ?(functional_bodies = fun _ -> []) loc prop =
 
 (* z3's [:reason-unknown] → which knob to raise to move the verdict. *)
 let coercion_hint = function
-  | Some r when String.starts_with ~prefix:"max. resource" r ->
+  | Some r
+    when r = "canceled" || r = "push canceled"
+         || String.starts_with ~prefix:"max. resource" r ->
       "raise rlimit first, then debug the query"
-  | Some ("timeout" | "canceled") ->
+  | Some "timeout" ->
       "raise the prover timeout first, then debug the query"
   | Some r -> Printf.sprintf "z3 reason-unknown: %s" r
   | None -> "z3 gave no reason-unknown"
@@ -229,4 +231,6 @@ let check_valid_bool ?functional_bodies loc query ~on_unknown =
   | SmtValid -> true
   | SmtInvalid -> false
   | Unknown reason ->
-      coerce ~reason ~desc:(fun b -> if b then "valid" else "invalid") on_unknown
+      coerce ~reason
+        ~desc:(fun b -> if b then "valid" else "invalid")
+        on_unknown
