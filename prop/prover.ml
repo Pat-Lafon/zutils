@@ -189,8 +189,7 @@ let coercion_hint = function
     when r = "canceled" || r = "push canceled"
          || String.starts_with ~prefix:"max. resource" r ->
       "raise rlimit first, then debug the query"
-  | Some "timeout" ->
-      "raise the prover timeout first, then debug the query"
+  | Some "timeout" -> "raise the prover timeout first, then debug the query"
   | Some r -> Printf.sprintf "z3 reason-unknown: %s" r
   | None -> "z3 gave no reason-unknown"
 
