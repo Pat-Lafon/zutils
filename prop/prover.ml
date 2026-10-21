@@ -56,6 +56,33 @@ let serialize (ctx : context) (exprs : Expr.expr list) : string =
   Solver.add solver exprs;
   Solver.to_string solver
 
+(* [serialize] of the axioms and then the goal, with each axiom's assert under
+   a [; axiom <name>] line: z3 skips comments, so a dumped query names its
+   axioms without changing what z3 solves. *)
+let serialize_named ctx (axioms : (string * Expr.expr) list) goal =
+  let printed = serialize ctx (List.map snd axioms @ [ goal ]) in
+  let rec first_assert i =
+    if i + 7 > String.length printed then failwith "serialize printed no assert"
+    else if String.sub printed i 7 = "(assert" then i
+    else first_assert (i + 1)
+  in
+  let assert_ e = Printf.sprintf "(assert %s)\n" (Expr.to_string e) in
+  String.sub printed 0 (first_assert 0)
+  ^ String.concat ""
+      (List.map (fun (name, e) -> "; axiom " ^ name ^ "\n" ^ assert_ e) axioms)
+  ^ assert_ goal
+
+let%test "an axiom's caption names it and parses back" =
+  ZUtilsConfig.(set (Result.get_ok (of_yojson (`Assoc []))));
+  let ctx = mk_context [] in
+  let p = Boolean.mk_const_s ctx "p" in
+  let text = serialize_named ctx [ ("ax_p", p) ] (Boolean.mk_not ctx p) in
+  String.split_on_char '\n' text |> List.mem "; axiom ax_p"
+  &&
+  match SMT.parse_smtlib2_string ctx text [] [] [] [] with
+  | _ -> true
+  | exception Z3.Error _ -> false
+
 let declares_datatype body =
   String.split_on_char '\n' body
   |> List.exists (String.starts_with ~prefix:"(declare-datatype")
@@ -142,7 +169,7 @@ let check_sat loc prop =
   let () = report_unclosed loc prop in
   let { ctx; ax_sys } = get_prover () in
   let z3_axioms =
-    List.map (fun (_, p) -> Propencoding.to_z3 ctx p)
+    List.map (fun (name, p) -> (name, Propencoding.to_z3 ctx p))
     @@ Axiom.find_axioms ax_sys prop
   in
   let query = Propencoding.to_z3 ctx prop in
@@ -150,7 +177,7 @@ let check_sat loc prop =
     ZUtilsLog.queries @@ fun _ ->
     Pp.printf "@{<bold>QUERY:@}\n%s\n" (Expr.to_string query)
   in
-  let body = serialize ctx (z3_axioms @ [ query ]) in
+  let body = serialize_named ctx z3_axioms query in
   let entries = portfolio_entries body in
   dump_queries entries;
   let time_t, (res, winner) = Sugar.clock (fun () -> Portfolio.solve entries) in
