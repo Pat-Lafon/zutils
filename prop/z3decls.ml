@@ -46,10 +46,6 @@ let register_decl d =
 
 let exists_ctor p = List.exists (fun d -> List.exists p d.ctors) !decl_registry
 
-let is_dt_accessor opname =
-  exists_ctor (fun c ->
-      List.exists (fun f -> String.equal f.fname opname) c.fields)
-
 let recognizer_ctor opname =
   if String.starts_with ~prefix:recognizer_prefix opname then
     let n = String.length recognizer_prefix in
