@@ -37,16 +37,6 @@ let set_z3_rlimit (rlimit : int option) =
     rlimit;
   _rlimit := rlimit
 
-let _timeout : int option ref = ref None
-
-let set_z3_timeout (timeout : int option) =
-  Option.iter
-    (fun n ->
-      if n <= 0 then
-        failwith (Printf.sprintf "z3 timeout must be positive, got %d" n))
-    timeout;
-  _timeout := timeout
-
 let update_axioms axioms =
   let p = get_prover () in
   _prover := Some { p with ax_sys = Axiom.add_laxioms p.ax_sys axioms }
@@ -85,11 +75,18 @@ let dump_queries entries =
 
 (* The queries raced for one [check_sat] *)
 let portfolio_entries ~functional_bodies axiom_body : Portfolio.entry list =
-  let timeout =
-    match !_timeout with Some t -> t | None -> get_prover_timeout_bound ()
+  (* With an rlimit set, no [:timeout], so the verdict depends on [:rlimit]
+     alone, not machine load. *)
+  let timeout_opt =
+    match !_rlimit with
+    | Some _ -> ""
+    | None ->
+        let timeout = get_prover_timeout_bound () in
+        if timeout <= 0 then
+          failwith
+            (Printf.sprintf "prover timeout must be positive, got %d" timeout);
+        Printf.sprintf "(set-option :timeout %d)\n" timeout
   in
-  if timeout <= 0 then
-    failwith (Printf.sprintf "prover timeout must be positive, got %d" timeout);
   let rlimit_opt =
     match !_rlimit with
     | Some r -> Printf.sprintf "(set-option :rlimit %d)\n" r
@@ -102,12 +99,8 @@ let portfolio_entries ~functional_bodies axiom_body : Portfolio.entry list =
         "(set-option :smt.ematching false)\n(set-option :smt.mbqi true)\n"
       else ""
     in
-    Printf.sprintf
-      "%s%s(set-option :timeout %d)\n\
-       %s%s\n\
-       (check-sat)\n\
-       (get-info :reason-unknown)\n"
-      dt mq timeout rlimit_opt body
+    Printf.sprintf "%s%s%s%s%s\n(check-sat)\n(get-info :reason-unknown)\n" dt mq
+      timeout_opt rlimit_opt body
   in
   (* [dt_lazy_splits] only steers datatype case splits, so a body without a
      datatype would race a copy of [axiom]. *)
@@ -233,3 +226,41 @@ let check_valid_bool ?functional_bodies loc query ~on_unknown =
       coerce ~reason
         ~desc:(fun b -> if b then "valid" else "invalid")
         on_unknown
+
+let%test "a functional body defining len decides a sat query over it" =
+  ZUtilsConfig.(set (Result.get_ok (of_yojson (`Assoc []))));
+  let ilist = Nt.Ty_constructor ("ilist", []) in
+  if not (Z3decls.is_registered "ilist") then
+    Z3decls.register_decl
+      {
+        dt_name = "ilist";
+        ctors =
+          [
+            { cname = "nil"; fields = [] };
+            {
+              cname = "cons";
+              fields =
+                [
+                  { fname = "head"; ftype = Nt.int_ty };
+                  { fname = "tail"; ftype = ilist };
+                ];
+            };
+          ];
+      };
+  let l = "l"#:ilist in
+  let len_l =
+    AAppOp ("len"#:(Nt.mk_arr ilist Nt.int_ty), [ (AVar l)#:ilist ])
+  in
+  let query =
+    Exists { qv = l; body = lit_to_prop (mk_int_l1_eq_l2 len_l (AC (I 2))) }
+  in
+  let functional_bodies p =
+    [
+      "(declare-datatypes ((ilist 0)) (((nil) (cons (head Int) (tail ilist)))))\n\
+       (define-fun-rec len ((l ilist)) Int\n\
+      \  (match l ((nil 0) ((cons h t) (+ 1 (len t))))))\n"
+      ^ spf "(assert %s)\n"
+          (Expr.to_string (Propencoding.to_z3 (get_prover ()).ctx p));
+    ]
+  in
+  check_sat ~functional_bodies [%here] query = SmtSat
