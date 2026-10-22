@@ -183,11 +183,22 @@ let coercion_hint = function
   | Some r -> Printf.sprintf "z3 reason-unknown: %s" r
   | None -> "z3 gave no reason-unknown"
 
-let record_nondecisive ~reason ~coerced_to =
-  ZUtilsLog.queries @@ fun () ->
-  Printf.eprintf
-    "[non-decisive Z3 verdict] q%i: timeout/unknown coerced to %s; %s.\n"
-    !query_counter coerced_to (coercion_hint reason)
+(* How [check_valid_bool] / [check_sat_bool] answer when Z3 returns unknown. *)
+type on_unknown = Accept | Reject | Raise
+
+let coerce ~reason ~desc on_unknown =
+  match on_unknown with
+  | Raise ->
+      failwith
+        (Printf.sprintf "non-decisive Z3 verdict at q%i; %s" !query_counter
+           (coercion_hint reason))
+  | Accept | Reject ->
+      let b = on_unknown = Accept in
+      ( ZUtilsLog.queries @@ fun () ->
+        Printf.eprintf
+          "[non-decisive Z3 verdict] q%i: timeout/unknown coerced to %s; %s.\n"
+          !query_counter (desc b) (coercion_hint reason) );
+      b
 
 let check_valid ?functional_bodies loc query =
   match check_sat ?functional_bodies loc (smart_not query) with
@@ -195,23 +206,23 @@ let check_valid ?functional_bodies loc query =
   | SmtSat -> SmtInvalid
   | Unknown reason -> Unknown reason
 
-let check_sat_bool ?functional_bodies loc query ~coerce_to =
-  let coerce_desc = if coerce_to then "inhabited" else "uninhabited" in
+let check_sat_bool ?functional_bodies loc query ~on_unknown =
   match check_sat ?functional_bodies loc query with
   | SmtSat -> true
   | SmtUnsat -> false
   | Unknown reason ->
-      record_nondecisive ~reason ~coerced_to:coerce_desc;
-      coerce_to
+      coerce ~reason
+        ~desc:(fun b -> if b then "inhabited" else "uninhabited")
+        on_unknown
 
-let check_valid_bool ?functional_bodies loc query ~coerce_to =
-  let coerce_desc = if coerce_to then "valid" else "invalid" in
+let check_valid_bool ?functional_bodies loc query ~on_unknown =
   match check_valid ?functional_bodies loc query with
   | SmtValid -> true
   | SmtInvalid -> false
   | Unknown reason ->
-      record_nondecisive ~reason ~coerced_to:coerce_desc;
-      coerce_to
+      coerce ~reason
+        ~desc:(fun b -> if b then "valid" else "invalid")
+        on_unknown
 
 let%test "a functional body defining len decides a sat query over it" =
   ZUtilsConfig.(set (Result.get_ok (of_yojson (`Assoc []))));
