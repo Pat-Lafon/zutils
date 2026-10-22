@@ -8,4 +8,6 @@
  (public_name zutils)
  (wrapped true)
  (modules zutils)
+ (flags
+  (:standard -open Physical -alert @physical))
  (libraries zdatatype normalty ocamlParser typectx zutilsConfig prop dtree))

@@ -8,5 +8,7 @@
  (name dtree)
  (libraries str bigarray sugar)
  (modules FastDT dt)
+ (flags
+  (:standard -open Physical -alert @physical))
  (preprocess
   (pps ppx_here)))

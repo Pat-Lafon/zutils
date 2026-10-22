@@ -5,6 +5,8 @@
  (modules_without_implementation)
  (libraries sugar core zutilsConfig)
  (modules typectx)
+ (flags
+  (:standard -open Physical -alert @physical))
  (preprocess
   (pps
    ppx_optcomp

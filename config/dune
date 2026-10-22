@@ -3,6 +3,8 @@
  (name zutilsConfig)
  (wrapped false)
  (modules configSection zUtilsConfig zUtilsLog)
- (libraries yojson)
+ (libraries yojson physical)
+ (flags
+  (:standard -open Physical -alert @physical))
  (preprocess
   (pps ppx_deriving_yojson)))

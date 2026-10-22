@@ -5,6 +5,8 @@
  (modules_without_implementation)
  (libraries sugar core ocamlParser ppxlib zutilsConfig)
  (modules ast subst frontend syntax unification normalty)
+ (flags
+  (:standard -open Physical -alert @physical))
  (preprocess
   (pps
    ppx_optcomp
