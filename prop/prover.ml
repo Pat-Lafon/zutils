@@ -120,14 +120,6 @@ let portfolio_entries axiom_body : Portfolio.entry list =
       };
     ]
 
-let select_axioms prop =
-  let { ax_sys; _ } = get_prover () in
-  Axiom.find_axioms ax_sys prop
-
-let all_axioms () =
-  let { ax_sys; _ } = get_prover () in
-  Axiom.all_axioms ax_sys
-
 let report_unclosed loc query =
   let fvs = fv_prop query in
   _assert loc
