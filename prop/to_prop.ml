@@ -15,9 +15,7 @@ let rec layout_to_smtlib2 = function
   | Cmp (Neq, a, b) -> layout_to_smtlib2 (Not (Cmp (Eq, a, b)))
   | Cmp (op, a, b) ->
       let op = match op with Eq -> "=" | _ -> cmp_op_to_string op in
-      spf "(%s %s %s)" op
-        (layout_typed_lit_to_smtlib2 a)
-        (layout_typed_lit_to_smtlib2 b)
+      spf "(%s %s %s)" op (layout_to_smtlib2 a) (layout_to_smtlib2 b)
   | Implies (p1, p2) ->
       spf "(=> %s %s)" (layout_to_smtlib2 p1) (layout_to_smtlib2 p2)
   | And [ p ] -> layout_to_smtlib2 p
@@ -25,8 +23,6 @@ let rec layout_to_smtlib2 = function
   | And ps -> spf "(and %s)" @@ List.split_by " " layout_to_smtlib2 ps
   | Or ps -> spf "(or %s)" @@ List.split_by " " layout_to_smtlib2 ps
   | Not p -> spf "(not %s)" (layout_to_smtlib2 p)
-  | Iff (p1, p2) ->
-      spf "(= %s %s)" (layout_to_smtlib2 p1) (layout_to_smtlib2 p2)
   | Ite _ -> _die_with [%here] "unimp"
   | Forall { qv; body } ->
       spf "(forall ((%s %s)) %s)" qv.x (smt_layout_ty qv.ty)
@@ -50,12 +46,20 @@ let layout_prop_with
     } =
   let rec layout = function
     | Lit lit -> (layout_typed_lit lit, true)
-    | Cmp (op, a, b) ->
+    | Cmp (op, Lit a, Lit b) ->
         ( string_of_expression
           @@ mk_op_apply
                ( mkvar (layout_mp (cmp_op_to_string op)),
                  [ typed_lit_to_expr a; typed_lit_to_expr b ] ),
           true )
+    | Cmp (Eq, p1, p2) ->
+        (spf "%s %s %s" (p_layout p1) sym_iff (p_layout p2), false)
+    | Cmp (Neq, p1, p2) -> layout (Not (Cmp (Eq, p1, p2)))
+    | Cmp (op, p1, p2) ->
+        ( spf "%s %s %s" (p_layout p1)
+            (layout_mp (cmp_op_to_string op))
+            (p_layout p2),
+          false )
     | Implies (p1, p2) ->
         (spf "%s %s %s" (p_layout p1) sym_implies (p_layout p2), false)
     | And [ p ] -> layout p
@@ -65,7 +69,6 @@ let layout_prop_with
     | And ps -> (spf "%s" @@ List.split_by sym_and p_layout ps, false)
     | Or ps -> (spf "%s" @@ List.split_by sym_or p_layout ps, false)
     | Not p -> (spf "%s%s" sym_not (p_layout p), true)
-    | Iff (p1, p2) -> (spf "%s %s %s" (p_layout p1) sym_iff (p_layout p2), false)
     | Ite (p1, p2, p3) ->
         ( spf "if %s then %s else %s"
             (fst @@ layout p1)
@@ -86,9 +89,7 @@ let rec prop_to_expr expr =
     match e with
     | Lit lit -> typed_lit_to_expr lit
     | Cmp (op, a, b) ->
-        mk_op_apply
-          ( mkvar (cmp_op_to_string op),
-            [ typed_lit_to_expr a; typed_lit_to_expr b ] )
+        mk_op_apply (mkvar (cmp_op_to_string op), List.map prop_to_expr [ a; b ])
     | Implies (e1, e2) ->
         mk_op_apply (mkvar "implies", List.map prop_to_expr [ e1; e2 ])
     | Ite (e1, e2, e3) ->
@@ -102,7 +103,6 @@ let rec prop_to_expr expr =
     | Or [] -> failwith "un-imp"
     | Or [ x ] -> aux x
     | Or (h :: t) -> mk_op_apply (mkvar "||", List.map prop_to_expr [ h; Or t ])
-    | Iff (e1, e2) -> mk_op_apply (mkvar "iff", List.map prop_to_expr [ e1; e2 ])
     | Forall { qv; body } ->
         mklam (quantifier_to_pattern (Nt.Fa, qv)) (prop_to_expr body)
     | Exists { qv; body } ->
@@ -132,7 +132,7 @@ let prop_of_expr expr =
         | "implies", _ -> failwith "parsing: prop wrong implies"
         | "#==>", [ e1; e2 ] -> Implies (aux e1, aux e2)
         | "#==>", _ -> failwith "parsing: prop wrong implies"
-        | "iff", [ e1; e2 ] -> Iff (aux e1, aux e2)
+        | "iff", [ e1; e2 ] -> Cmp (Eq, aux e1, aux e2)
         | "iff", _ -> failwith "parsing: prop wrong iff"
         | "&&", [ a; b ] -> And [ aux a; aux b ]
         | "&&", _ -> failwith "parsing: prop wrong and"
@@ -141,8 +141,7 @@ let prop_of_expr expr =
         | "=", _ -> failwith "please use == instead of ="
         | _, _ -> (
             match (cmp_op_of_string f.x, args) with
-            | Some op, [ a; b ] ->
-                Cmp (op, typed_lit_of_expr a, typed_lit_of_expr b)
+            | Some op, [ a; b ] -> Cmp (op, aux a, aux b)
             | Some _, _ -> failwith "parsing: prop wrong comparison"
             | None, _ -> Lit (typed_lit_of_expr expr)))
     | Pexp_ifthenelse (e1, e2, Some e3) ->
@@ -157,17 +156,7 @@ let prop_of_expr expr =
         | FA -> Forall { qv; body }
         | EX -> Exists { qv; body }
         | _ -> _die [%here])
-    | Pexp_construct _ ->
-        (* let () = *)
-        (*   Printf.printf "expr: %s\n" (string_of_expression expr) *)
-        (* in *)
-        Lit (typed_lit_of_expr expr)
-    | Pexp_tuple _ | Pexp_ident _ | Pexp_constant _ ->
-        Lit (typed_lit_of_expr expr)
-    | _ ->
-        raise
-        @@ failwith
-             (spf "not imp client parsing:%s" @@ string_of_expression expr)
+    | _ -> Lit (typed_lit_of_expr expr)
   in
   aux expr
 

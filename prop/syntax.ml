@@ -136,11 +136,11 @@ let mk_lit_eq_lit loc lx ly =
   _assert loc "arguments of == should be the same"
     (Nt.equal_nt (lit_to_nt lx) (lit_to_nt ly));
   let ty = lit_to_nt lx in
-  Cmp (Eq, lx#:ty, ly#:ty)
+  Cmp (Eq, Lit lx#:ty, Lit ly#:ty)
 
 let mk_var_eq_var loc x y = mk_lit_eq_lit loc (AVar x) (AVar y)
 let mk_var_eq_c loc x c = mk_lit_eq_lit loc (AVar x) (AC c)
-let mk_int_l1_eq_l2 l1 l2 = Cmp (Eq, l1#:Nt.int_ty, l2#:Nt.int_ty)
+let mk_int_l1_eq_l2 l1 l2 = Cmp (Eq, Lit l1#:Nt.int_ty, Lit l2#:Nt.int_ty)
 
 (** prop *)
 
@@ -152,14 +152,13 @@ let show_prop regex = show_prop (fun _ _ -> ()) regex
 let rec fv_prop (prop_e : 't prop) =
   match prop_e with
   | Lit _t__tlittyped0 -> [] @ typed_fv_lit _t__tlittyped0
-  | Cmp (_, a, b) -> typed_fv_lit a @ typed_fv_lit b
+  | Cmp (_, a, b) -> fv_prop a @ fv_prop b
   | Implies (_tprop0, _tprop1) -> ([] @ fv_prop _tprop1) @ fv_prop _tprop0
   | Ite (_tprop0, _tprop1, _tprop2) ->
       (([] @ fv_prop _tprop2) @ fv_prop _tprop1) @ fv_prop _tprop0
   | Not _tprop0 -> [] @ fv_prop _tprop0
   | And _tproplist0 -> [] @ List.concat (List.map fv_prop _tproplist0)
   | Or _tproplist0 -> [] @ List.concat (List.map fv_prop _tproplist0)
-  | Iff (_tprop0, _tprop1) -> ([] @ fv_prop _tprop1) @ fv_prop _tprop0
   | Forall { qv; body } ->
       Zdatatype.List.substract (eq_typed String.equal)
         ([] @ fv_prop body)
@@ -174,8 +173,7 @@ and typed_fv_prop (prop_e : ('t, 't prop) typed) = fv_prop prop_e.x
 let rec subst_prop (string_x : string) f (prop_e : 't prop) =
   match prop_e with
   | Lit _t__tlittyped0 -> Lit (typed_subst_lit string_x f _t__tlittyped0)
-  | Cmp (op, a, b) ->
-      Cmp (op, typed_subst_lit string_x f a, typed_subst_lit string_x f b)
+  | Cmp (op, a, b) -> Cmp (op, subst_prop string_x f a, subst_prop string_x f b)
   | Implies (_tprop0, _tprop1) ->
       Implies (subst_prop string_x f _tprop0, subst_prop string_x f _tprop1)
   | Ite (_tprop0, _tprop1, _tprop2) ->
@@ -186,8 +184,6 @@ let rec subst_prop (string_x : string) f (prop_e : 't prop) =
   | Not _tprop0 -> Not (subst_prop string_x f _tprop0)
   | And _tproplist0 -> And (List.map (subst_prop string_x f) _tproplist0)
   | Or _tproplist0 -> Or (List.map (subst_prop string_x f) _tproplist0)
-  | Iff (_tprop0, _tprop1) ->
-      Iff (subst_prop string_x f _tprop0, subst_prop string_x f _tprop1)
   | Forall { qv; body } ->
       if String.equal qv.x string_x then Forall { qv; body }
       else
@@ -215,7 +211,7 @@ and typed_subst_prop (string_x : string) f (prop_e : ('t, 't prop) typed) =
 let rec map_prop (f : 't -> 's) (prop_e : 't prop) =
   match prop_e with
   | Lit _t__tlittyped0 -> Lit (typed_map_lit f _t__tlittyped0)
-  | Cmp (op, a, b) -> Cmp (op, typed_map_lit f a, typed_map_lit f b)
+  | Cmp (op, a, b) -> Cmp (op, map_prop f a, map_prop f b)
   | Implies (_tprop0, _tprop1) ->
       Implies (map_prop f _tprop0, map_prop f _tprop1)
   | Ite (_tprop0, _tprop1, _tprop2) ->
@@ -223,7 +219,6 @@ let rec map_prop (f : 't -> 's) (prop_e : 't prop) =
   | Not _tprop0 -> Not (map_prop f _tprop0)
   | And _tproplist0 -> And (List.map (map_prop f) _tproplist0)
   | Or _tproplist0 -> Or (List.map (map_prop f) _tproplist0)
-  | Iff (_tprop0, _tprop1) -> Iff (map_prop f _tprop0, map_prop f _tprop1)
   | Forall { qv; body } -> Forall { qv = qv#=>f; body = map_prop f body }
   | Exists { qv; body } -> Exists { qv = qv#=>f; body = map_prop f body }
 
@@ -233,8 +228,8 @@ and typed_map_prop (f : 't -> 's) (prop_e : ('t, 't prop) typed) =
 let rec fold_prop f acc (prop_e : 't prop) =
   let acc = f acc prop_e in
   match prop_e with
-  | Lit _ | Cmp _ -> acc
-  | Implies (e1, e2) ->
+  | Lit _ -> acc
+  | Cmp (_, e1, e2) | Implies (e1, e2) ->
       let acc = fold_prop f acc e1 in
       fold_prop f acc e2
   | Ite (e1, e2, e3) ->
@@ -244,9 +239,6 @@ let rec fold_prop f acc (prop_e : 't prop) =
   | Not e -> fold_prop f acc e
   | And es -> List.fold_left (fold_prop f) acc es
   | Or es -> List.fold_left (fold_prop f) acc es
-  | Iff (e1, e2) ->
-      let acc = fold_prop f acc e1 in
-      fold_prop f acc e2
   | Forall { body; _ } -> fold_prop f acc body
   | Exists { body; _ } -> fold_prop f acc body
 
@@ -360,7 +352,7 @@ let smart_iff p1 p2 =
   else
     match (get_cbool p1, get_cbool p2) with
     | Some b1, Some b2 -> if Bool.equal b1 b2 then mk_true else mk_false
-    | _, _ -> Iff (p1, p2)
+    | _, _ -> Cmp (Eq, p1, p2)
 
 let str_in_list x l = List.exists (String.equal x) l
 
@@ -434,7 +426,7 @@ let is_var_c = function AVar _ | AC _ -> true | _ -> false
 
 let is_eq_phi x phi =
   match phi with
-  | Cmp (Eq, a, b) ->
+  | Cmp (Eq, Lit a, Lit b) ->
       if equal_lit Nt.equal_nt a.x (AVar x) then Some b.x
       else if equal_lit Nt.equal_nt b.x (AVar x) then Some a.x
       else None
@@ -466,16 +458,15 @@ let lift_ex_quantifiers phi =
         let qvss, ps = List.split @@ List.map (aux []) ps in
         let qvs = qvs @ List.concat qvss in
         (qvs, And ps)
-    | Lit _ | Cmp _ | Implies _ | Ite _ | Not _ | Or _ | Iff _ | Forall _ ->
-        (qvs, prop)
+    | Lit _ | Cmp _ | Implies _ | Ite _ | Not _ | Or _ | Forall _ -> (qvs, prop)
   in
   aux [] phi
 
 let simpl_eq_in_prop =
   let rec aux = function
     | Lit _ as p -> p
-    | Cmp (Eq, a, b) when equal_lit Nt.equal_nt a.x b.x -> mk_true
-    | Cmp _ as p -> p
+    | Cmp (Eq, e1, e2) when equal_prop Nt.equal_nt e1 e2 -> mk_true
+    | Cmp (op, e1, e2) -> Cmp (op, aux e1, aux e2)
     | Implies (e1, e2) when equal_prop Nt.equal_nt e1 e2 -> mk_true
     | Implies (e1, e2) -> Implies (aux e1, aux e2)
     | Ite (e1, e2, e3) -> Ite (aux e1, aux e2, aux e3)
@@ -484,8 +475,6 @@ let simpl_eq_in_prop =
         if is_true p then mk_false else if is_false p then mk_true else Not p
     | And es -> smart_and (List.map aux es)
     | Or es -> smart_or (List.map aux es)
-    | Iff (e1, e2) when equal_prop Nt.equal_nt e1 e2 -> mk_true
-    | Iff (e1, e2) -> Iff (aux e1, aux e2)
     | Forall { qv; body } -> Forall { qv; body = aux body }
     | Exists { qv; body } -> Exists { qv; body = aux body }
   in
@@ -510,13 +499,13 @@ let c_to_lit c = (AC c)#:(constant_to_nt c)
 
 let fresh_name_prop =
   let rec aux = function
-    | (Lit _ | Cmp _) as p -> p
+    | Lit lit -> Lit lit
+    | Cmp (op, e1, e2) -> Cmp (op, aux e1, aux e2)
     | Implies (e1, e2) -> Implies (aux e1, aux e2)
     | Ite (e1, e2, e3) -> Ite (aux e1, aux e2, aux e3)
     | Not p -> Not (aux p)
     | And es -> smart_and (List.map aux es)
     | Or es -> smart_or (List.map aux es)
-    | Iff (e1, e2) -> Iff (aux e1, aux e2)
     | Forall { qv; body } ->
         let qv' = qv#->Rename.unique in
         let body = subst_prop_instance qv.x (AVar qv') body in
@@ -553,10 +542,7 @@ let count_pred_lit lit =
 let count_pred_prop prop =
   let aux =
     fold_prop
-      (fun acc -> function
-        | Lit lit -> acc @ count_pred_lit lit
-        | Cmp (_, a, b) -> acc @ count_pred_lit a @ count_pred_lit b
-        | _ -> acc)
+      (fun acc -> function Lit lit -> acc @ count_pred_lit lit | _ -> acc)
       []
   in
   List.slow_rm_dup (fun x y -> String.equal x.x y.x) @@ aux prop
@@ -579,13 +565,12 @@ let rename_pred_prop oldname newname =
         | AAppOp (op, args) when String.equal op.x oldname ->
             Lit (AAppOp (newname#:op.ty, args))#:lit.ty
         | _ -> Lit lit)
-    | Cmp _ as p -> p
+    | Cmp (op, e1, e2) -> Cmp (op, aux e1, aux e2)
     | Implies (e1, e2) -> Implies (aux e1, aux e2)
     | Ite (e1, e2, e3) -> Ite (aux e1, aux e2, aux e3)
     | Not p -> Not (aux p)
     | And es -> smart_and (List.map aux es)
     | Or es -> smart_or (List.map aux es)
-    | Iff (e1, e2) -> Iff (aux e1, aux e2)
     | Forall { qv; body } -> Forall { qv; body = aux body }
     | Exists { qv; body } -> Exists { qv; body = aux body }
   in
@@ -608,10 +593,7 @@ let get_tfv_preds_from_prop prop =
   let aux =
     fold_prop
       (fun acc -> function
-        | Lit lit -> acc @ get_tfv_preds_from_lit lit
-        | Cmp (_, a, b) ->
-            acc @ get_tfv_preds_from_lit a @ get_tfv_preds_from_lit b
-        | _ -> acc)
+        | Lit lit -> acc @ get_tfv_preds_from_lit lit | _ -> acc)
       []
   in
   let res =
@@ -631,7 +613,7 @@ let to_nnf prop =
     | Implies (e1, e2) ->
         if is_negate then smart_and [ e1; aux true e2 ]
         else Implies (aux false e1, aux false e2)
-    | Ite _ | Iff _ -> if is_negate then smart_not prop else prop
+    | Ite _ -> if is_negate then smart_not prop else prop
     | Not p -> aux (not is_negate) p
     | And es ->
         if is_negate then smart_or (List.map (aux true) es)
@@ -661,8 +643,8 @@ let snf_quantified_var_by_name name =
     | And l -> smart_and (List.map aux l)
     | Or l -> smart_or (List.map aux l)
     | Implies (e1, e2) -> Implies (aux e1, aux e2)
-    | Lit _ | Cmp _ -> prop
-    | Iff (e1, e2) -> Iff (aux e1, aux e2)
+    | Lit _ -> prop
+    | Cmp (op, e1, e2) -> Cmp (op, aux e1, aux e2)
     | Ite (e1, e2, e3) -> Ite (aux e1, aux e2, aux e3)
     | Not e -> Not (aux e)
   in

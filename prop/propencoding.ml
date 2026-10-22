@@ -22,14 +22,13 @@ let to_z3 ctx prop =
     | Not p -> Boolean.mk_not ctx (aux p)
     | And ps -> Boolean.mk_and ctx (List.map aux ps)
     | Or ps -> Boolean.mk_or ctx (List.map aux ps)
-    | Iff (p1, p2) -> Boolean.mk_iff ctx (aux p1) (aux p2)
     | Forall { qv; body } ->
         make_forall ctx [ tpedvar_to_z3 ctx (qv.ty, qv.x) ] (aux body)
     | Exists { qv; body } ->
         make_exists ctx [ tpedvar_to_z3 ctx (qv.ty, qv.x) ] (aux body)
     | Lit lit -> Litencoding.typed_lit_to_z3 ctx lit
     | Cmp (op, a, b) -> (
-        let a, b = map2 (Litencoding.typed_lit_to_z3 ctx) (a, b) in
+        let a, b = map2 aux (a, b) in
         match op with
         | Eq -> Boolean.mk_eq ctx a b
         | Neq -> Boolean.mk_not ctx @@ Boolean.mk_eq ctx a b

@@ -12,18 +12,13 @@ let find_eq_lit_in_prop (x : string) (query : Nt.t prop) =
     match prop with
     | Lit lit ->
         if lit_is_var_by_name x lit then Some mk_lit_true#:lit.ty else None
-    | Cmp (Eq, a, b) ->
+    | Cmp (Eq, Lit a, Lit b) ->
         if lit_is_var_by_name x a then Some b
         else if lit_is_var_by_name x b then Some a
         else None
     | Cmp _ -> None
     | Not (Lit lit) ->
         if lit_is_var_by_name x lit then Some mk_lit_false#:lit.ty else None
-    | Iff (Lit a, Lit b) ->
-        if lit_is_var_by_name x a then Some b
-        else if lit_is_var_by_name x b then Some a
-        else None
-    | Iff _ -> None
     | And l -> (
         match List.filter_map aux l with
         | [] -> None
@@ -59,8 +54,8 @@ let simpl_no_used_quantifiers =
     | And l -> smart_and (List.map aux l)
     | Or l -> smart_or (List.map aux l)
     | Implies (e1, e2) -> Implies (aux e1, aux e2)
-    | Lit _ | Cmp _ -> prop
-    | Iff (e1, e2) -> Iff (aux e1, aux e2)
+    | Lit _ -> prop
+    | Cmp (op, e1, e2) -> Cmp (op, aux e1, aux e2)
     | Ite (e1, e2, e3) -> Ite (aux e1, aux e2, aux e3)
     | Not e -> Not (aux e)
   in
@@ -92,8 +87,8 @@ let instantiate_quantified_bool =
     | And l -> smart_and (List.map aux l)
     | Or l -> smart_or (List.map aux l)
     | Implies (e1, e2) -> Implies (aux e1, aux e2)
-    | Lit _ | Cmp _ -> prop
-    | Iff (e1, e2) -> Iff (aux e1, aux e2)
+    | Lit _ -> prop
+    | Cmp (op, e1, e2) -> Cmp (op, aux e1, aux e2)
     | Ite (e1, e2, e3) -> Ite (aux e1, aux e2, aux e3)
     | Not e -> Not (aux e)
   in
@@ -115,8 +110,8 @@ let simpl_query_by_eq (query : Nt.t prop) =
     | And l -> smart_and (List.map aux l)
     | Or l -> smart_or (List.map aux l)
     | Implies (e1, e2) -> Implies (aux e1, aux e2)
-    | Lit _ | Cmp _ -> prop
-    | Iff (e1, e2) -> Iff (aux e1, aux e2)
+    | Lit _ -> prop
+    | Cmp (op, e1, e2) -> Cmp (op, aux e1, aux e2)
     | Ite (e1, e2, e3) -> Ite (aux e1, aux e2, aux e3)
     | Not e -> Not (aux e)
   in
@@ -149,15 +144,18 @@ let eval_arithmetic_in_lit =
 
 let eval_cmp op a b =
   let of_bool b = if b then mk_true else mk_false in
-  match (op, a.x, b.x) with
-  | Eq, AC x, AC y -> of_bool (equal_constant x y)
-  | Neq, AC x, AC y -> of_bool (not (equal_constant x y))
-  | Eq, x, y when equal_lit Nt.equal_nt x y -> mk_true
-  | Neq, x, y when equal_lit Nt.equal_nt x y -> mk_false
-  | Le, AC (I x), AC (I y) -> of_bool (x <= y)
-  | Ge, AC (I x), AC (I y) -> of_bool (x >= y)
-  | Lt, AC (I x), AC (I y) -> of_bool (x < y)
-  | Gt, AC (I x), AC (I y) -> of_bool (x > y)
+  match (op, a, b) with
+  | Eq, _, _ when equal_prop (fun _ _ -> true) a b -> mk_true
+  | Neq, _, _ when equal_prop (fun _ _ -> true) a b -> mk_false
+  | _, Lit x, Lit y -> (
+      match (op, x.x, y.x) with
+      | Eq, AC x, AC y -> of_bool (equal_constant x y)
+      | Neq, AC x, AC y -> of_bool (not (equal_constant x y))
+      | Le, AC (I x), AC (I y) -> of_bool (x <= y)
+      | Ge, AC (I x), AC (I y) -> of_bool (x >= y)
+      | Lt, AC (I x), AC (I y) -> of_bool (x < y)
+      | Gt, AC (I x), AC (I y) -> of_bool (x > y)
+      | _ -> Cmp (op, a, b))
   | _ -> Cmp (op, a, b)
 
 let eval_arithmetic prop =
@@ -173,11 +171,7 @@ let eval_arithmetic prop =
     | Or l -> smart_or (List.map aux l)
     | Implies (e1, e2) -> Implies (aux e1, aux e2)
     | Lit lit -> Lit (eval_arithmetic_in_lit lit)
-    | Cmp (op, a, b) ->
-        eval_cmp op (eval_arithmetic_in_lit a) (eval_arithmetic_in_lit b)
-    | Iff (e1, e2) ->
-        let e1, e2 = map2 aux (e1, e2) in
-        if equal_prop (fun _ _ -> true) e1 e2 then mk_true else Iff (e1, e2)
+    | Cmp (op, e1, e2) -> eval_cmp op (aux e1) (aux e2)
     | Ite (e1, e2, e3) -> Ite (aux e1, aux e2, aux e3)
     | Not e -> Not (aux e)
   in
@@ -208,11 +202,8 @@ let eval_feq_match prop =
     | Or l -> smart_or (List.map aux l)
     | Implies (e1, e2) -> Implies (aux e1, aux e2)
     | Lit _ as p -> p
-    | Cmp (Eq, a, b) -> eval_feq_match_lits a.x b.x
-    | Cmp _ as p -> p
-    | Iff (e1, e2) ->
-        let e1, e2 = map2 aux (e1, e2) in
-        if equal_prop (fun _ _ -> true) e1 e2 then mk_true else Iff (e1, e2)
+    | Cmp (Eq, Lit a, Lit b) -> eval_feq_match_lits a.x b.x
+    | Cmp (op, e1, e2) -> eval_cmp op (aux e1) (aux e2)
     | Ite (e1, e2, e3) -> Ite (aux e1, aux e2, aux e3)
     | Not e -> Not (aux e)
   in
