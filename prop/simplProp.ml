@@ -147,6 +147,9 @@ let eval_cmp op a b =
   match (op, a, b) with
   | Eq, _, _ when equal_prop (fun _ _ -> true) a b -> mk_true
   | Neq, _, _ when equal_prop (fun _ _ -> true) a b -> mk_false
+  | (Eq | Neq), Lit { x = AC (B c); _ }, p
+  | (Eq | Neq), p, Lit { x = AC (B c); _ } ->
+      if c = (op = Eq) then p else smart_not p
   | _, Lit x, Lit y -> (
       match (op, x.x, y.x) with
       | Eq, AC x, AC y -> of_bool (equal_constant x y)
