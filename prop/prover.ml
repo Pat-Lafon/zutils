@@ -278,9 +278,7 @@ let%test "a functional body defining len decides a sat query over it" =
   let len_l =
     AAppOp ("len"#:(Nt.mk_arr ilist Nt.int_ty), [ (AVar l)#:ilist ])
   in
-  let query =
-    Exists { qv = l; body = lit_to_prop (mk_int_l1_eq_l2 len_l (AC (I 2))) }
-  in
+  let query = Exists { qv = l; body = mk_int_l1_eq_l2 len_l (AC (I 2)) } in
   let functional_bodies p =
     [
       "(declare-datatypes ((ilist 0)) (((nil) (cons (head Int) (tail ilist)))))\n\

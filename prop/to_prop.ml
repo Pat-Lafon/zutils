@@ -12,6 +12,12 @@ open To_notation
 
 let rec layout_to_smtlib2 = function
   | Lit lit -> layout_typed_lit_to_smtlib2 lit
+  | Cmp (Neq, a, b) -> layout_to_smtlib2 (Not (Cmp (Eq, a, b)))
+  | Cmp (op, a, b) ->
+      let op = match op with Eq -> "=" | _ -> cmp_op_to_string op in
+      spf "(%s %s %s)" op
+        (layout_typed_lit_to_smtlib2 a)
+        (layout_typed_lit_to_smtlib2 b)
   | Implies (p1, p2) ->
       spf "(=> %s %s)" (layout_to_smtlib2 p1) (layout_to_smtlib2 p2)
   | And [ p ] -> layout_to_smtlib2 p
@@ -43,7 +49,13 @@ let layout_prop_with
       _;
     } =
   let rec layout = function
-    | Lit lit -> (layout_typed_lit_mp layout_mp lit, true)
+    | Lit lit -> (layout_typed_lit lit, true)
+    | Cmp (op, a, b) ->
+        ( string_of_expression
+          @@ mk_op_apply
+               ( mkvar (layout_mp (cmp_op_to_string op)),
+                 [ typed_lit_to_expr a; typed_lit_to_expr b ] ),
+          true )
     | Implies (p1, p2) ->
         (spf "%s %s %s" (p_layout p1) sym_implies (p_layout p2), false)
     | And [ p ] -> layout p
@@ -73,6 +85,10 @@ let rec prop_to_expr expr =
   let rec aux e =
     match e with
     | Lit lit -> typed_lit_to_expr lit
+    | Cmp (op, a, b) ->
+        mk_op_apply
+          ( mkvar (cmp_op_to_string op),
+            [ typed_lit_to_expr a; typed_lit_to_expr b ] )
     | Implies (e1, e2) ->
         mk_op_apply (mkvar "implies", List.map prop_to_expr [ e1; e2 ])
     | Ite (e1, e2, e3) ->
@@ -123,7 +139,12 @@ let prop_of_expr expr =
         | "||", [ a; b ] -> Or [ aux a; aux b ]
         | "||", _ -> failwith "parsing: prop wrong or"
         | "=", _ -> failwith "please use == instead of ="
-        | _, _ -> Lit (typed_lit_of_expr expr))
+        | _, _ -> (
+            match (cmp_op_of_string f.x, args) with
+            | Some op, [ a; b ] ->
+                Cmp (op, typed_lit_of_expr a, typed_lit_of_expr b)
+            | Some _, _ -> failwith "parsing: prop wrong comparison"
+            | None, _ -> Lit (typed_lit_of_expr expr)))
     | Pexp_ifthenelse (e1, e2, Some e3) ->
         let p1, p2, p3 = map3 aux (e1, e2, e3) in
         And [ Implies (p1, p2); Implies (Not p1, p3) ]

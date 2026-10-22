@@ -48,8 +48,7 @@ let rec layout_lit_to_smtlib2 expr =
     match expr with
     | AC c -> To_constant.layout_constant c
     | AAppOp (op, args) ->
-        let op = match op.x with "==" -> "=" | _ -> op.x in
-        spf "(%s %s)" op (List.split_by " " layout_typed_lit_to_smtlib2 args)
+        spf "(%s %s)" op.x (List.split_by " " layout_typed_lit_to_smtlib2 args)
     | ATu args ->
         spf "(%s)" (List.split_by_comma layout_typed_lit_to_smtlib2 args)
     | AProj (lit, n) ->
@@ -69,9 +68,6 @@ and layout_typed_lit_to_smtlib2 expr = layout_lit_to_smtlib2 expr.x
 let layout_lit lit = string_of_expression @@ lit_to_expr lit
 let layout = layout_lit
 let layout_typed_lit lit = layout lit.x
-
-let layout_typed_lit_mp mp lit =
-  string_of_expression @@ lit_to_expr (Syntax.map_op mp lit.x)
 
 open Nt
 
@@ -118,11 +114,11 @@ let rec lit_of_expr expr =
             match args with
             | [ lit; { x = AC (I n); _ } ] -> AProj (lit, n)
             | _ -> _die [%here])
-        | AVar f ->
-            AAppOp (f, args)
-            (* match string_to_op_opt f.x with *)
-            (* | Some _ -> AAppOp (f, args) *)
-            (* | None -> _die [%here] *)
+        | AVar f when is_prop_op f.x ->
+            _failatwith [%here]
+              (spf "parsing: %s is a prop, not a term: %s" f.x
+                 (string_of_expression expr))
+        | AVar f -> AAppOp (f, args)
         | _ -> _die [%here]
       in
       res

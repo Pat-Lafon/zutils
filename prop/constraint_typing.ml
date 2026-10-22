@@ -110,6 +110,16 @@ let constraint_prop_type_check (ctx : t ctx) (bc : BC.bc) (prop : t prop) =
         let bc, lit = constraint_lit_type_check ctx bc lit in
         let bc, _ = BC.add bc (lit.ty, Nt.bool_ty) in
         (bc, Lit lit.x#:Nt.bool_ty)
+    | Cmp (op, a, b) ->
+        let bc, a = constraint_lit_type_check ctx bc a in
+        let bc, b = constraint_lit_type_check ctx bc b in
+        let bc, _ = BC.add bc (a.ty, b.ty) in
+        let bc =
+          match op with
+          | Eq | Neq -> bc
+          | Lt | Le | Gt | Ge -> fst @@ BC.add bc (a.ty, Nt.int_ty)
+        in
+        (bc, Cmp (op, a, b))
     | Implies (e1, e2) ->
         let bc, e1 = aux ctx bc e1 in
         let bc, e2 = aux ctx bc e2 in

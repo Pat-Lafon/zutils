@@ -33,7 +33,6 @@
   propencoding
   portfolio
   axiom
-  data
   simplProp
   prover)
  (preprocess

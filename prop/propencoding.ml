@@ -28,6 +28,15 @@ let to_z3 ctx prop =
     | Exists { qv; body } ->
         make_exists ctx [ tpedvar_to_z3 ctx (qv.ty, qv.x) ] (aux body)
     | Lit lit -> Litencoding.typed_lit_to_z3 ctx lit
+    | Cmp (op, a, b) -> (
+        let a, b = map2 (Litencoding.typed_lit_to_z3 ctx) (a, b) in
+        match op with
+        | Eq -> Boolean.mk_eq ctx a b
+        | Neq -> Boolean.mk_not ctx @@ Boolean.mk_eq ctx a b
+        | Lt -> Arithmetic.mk_lt ctx a b
+        | Le -> Arithmetic.mk_le ctx a b
+        | Gt -> Arithmetic.mk_gt ctx a b
+        | Ge -> Arithmetic.mk_ge ctx a b)
   in
   let p1 = to_nnf prop in
   let () =
@@ -43,7 +52,7 @@ let%test_module "repeated binder names" =
     let () = ZUtilsConfig.(set (Result.get_ok (of_yojson (`Assoc []))))
     let ctx = Z3.mk_context []
     let u = "u"#:Nt.int_ty
-    let eq i = lit_to_prop (mk_int_l1_eq_l2 (AVar u) (AC (I i)))
+    let eq i = mk_int_l1_eq_l2 (AVar u) (AC (I i))
 
     let check p =
       let s = Z3.Solver.mk_solver ctx None in

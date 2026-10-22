@@ -63,15 +63,6 @@ let rec typed_lit_to_z3 ctx lit =
             List.nth (Datatype.get_constructors (tp_to_sort ctx lit.ty)) 1
           in
           Z3.FuncDecl.apply constructor [ a ]
-      | "==", [ a; b ] -> Boolean.mk_eq ctx a b
-      | "!=", [ a; b ] -> Boolean.mk_not ctx @@ Boolean.mk_eq ctx a b
-      | "&&", [ a; b ] -> Boolean.mk_and ctx [ a; b ]
-      | "||", [ a; b ] -> Boolean.mk_or ctx [ a; b ]
-      | "not", [ a ] -> Boolean.mk_not ctx a
-      | "<=", [ a; b ] -> Arithmetic.mk_le ctx a b
-      | ">=", [ a; b ] -> Arithmetic.mk_ge ctx a b
-      | "<", [ a; b ] -> Arithmetic.mk_lt ctx a b
-      | ">", [ a; b ] -> Arithmetic.mk_gt ctx a b
       | "+", [ a; b ] -> Arithmetic.mk_add ctx [ a; b ]
       | "-", [ a; b ] -> Arithmetic.mk_sub ctx [ a; b ]
       | "mod", [ a; b ] -> Arithmetic.Integer.mk_mod ctx a b
@@ -81,6 +72,8 @@ let rec typed_lit_to_z3 ctx lit =
       | "char_is_digit", [ a ] -> Seq.mk_char_is_digit ctx a
       | "char_to_int", [ a ] -> Seq.mk_char_to_int ctx a
       | "char_le", [ a; b ] -> Seq.mk_char_le ctx a b
+      | opname, _ when is_prop_op opname ->
+          _die_with [%here] (spf "%s is a prop, not a term" opname)
       | opname, args ->
           let func =
             match func_lookup ctx opname with
