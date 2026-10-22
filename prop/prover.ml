@@ -56,6 +56,15 @@ let serialize (ctx : context) (exprs : Expr.expr list) : string =
   Solver.add solver exprs;
   Solver.to_string solver
 
+let%test "a type-variable sort survives serialization" =
+  ZUtilsConfig.(set (Result.get_ok (of_yojson (`Assoc []))));
+  let ctx = mk_context [] in
+  let x = Expr.mk_const_s ctx "x" (Z3aux.tp_to_sort ctx (Nt.Ty_var "a1")) in
+  let text = serialize ctx [ Boolean.mk_eq ctx x x ] in
+  match SMT.parse_smtlib2_string ctx text [] [] [] [] with
+  | _ -> true
+  | exception Z3.Error _ -> false
+
 let declares_datatype body =
   String.split_on_char '\n' body
   |> List.exists (String.starts_with ~prefix:"(declare-datatype")

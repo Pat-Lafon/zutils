@@ -52,7 +52,7 @@ let to_smtty t =
     | Ty_constructor (name, []) -> Smt_Uninterp name
     | Ty_constructor (_, _) -> Smt_Uninterp (layout_nt t)
     | Ty_tuple l -> Smt_tuple (List.map aux l)
-    | Ty_var _ -> Smt_Uninterp (layout_nt t)
+    | Ty_var name -> Smt_Uninterp ("Tv_" ^ name)
     | Ty_record { fds; _ } ->
         Smt_record (List.map (fun x -> x#=>aux) (sort_record fds))
     | _ -> _die_with [%here] (spf "%s not a basic type" (show_nt t))
