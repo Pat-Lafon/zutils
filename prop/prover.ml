@@ -37,16 +37,6 @@ let set_z3_rlimit (rlimit : int option) =
     rlimit;
   _rlimit := rlimit
 
-let _timeout : int option ref = ref None
-
-let set_z3_timeout (timeout : int option) =
-  Option.iter
-    (fun n ->
-      if n <= 0 then
-        failwith (Printf.sprintf "z3 timeout must be positive, got %d" n))
-    timeout;
-  _timeout := timeout
-
 let update_axioms axioms =
   let p = get_prover () in
   _prover := Some { p with ax_sys = Axiom.add_laxioms p.ax_sys axioms }
@@ -76,11 +66,18 @@ let dump_queries entries =
 
 (* The queries raced for one [check_sat] *)
 let portfolio_entries ~functional_bodies axiom_body : Portfolio.entry list =
-  let timeout =
-    match !_timeout with Some t -> t | None -> get_prover_timeout_bound ()
+  (* With an rlimit set, no [:timeout], so the verdict depends on [:rlimit]
+     alone, not machine load. *)
+  let timeout_opt =
+    match !_rlimit with
+    | Some _ -> ""
+    | None ->
+        let timeout = get_prover_timeout_bound () in
+        if timeout <= 0 then
+          failwith
+            (Printf.sprintf "prover timeout must be positive, got %d" timeout);
+        Printf.sprintf "(set-option :timeout %d)\n" timeout
   in
-  if timeout <= 0 then
-    failwith (Printf.sprintf "prover timeout must be positive, got %d" timeout);
   let rlimit_opt =
     match !_rlimit with
     | Some r -> Printf.sprintf "(set-option :rlimit %d)\n" r
@@ -93,12 +90,8 @@ let portfolio_entries ~functional_bodies axiom_body : Portfolio.entry list =
         "(set-option :smt.ematching false)\n(set-option :smt.mbqi true)\n"
       else ""
     in
-    Printf.sprintf
-      "%s%s(set-option :timeout %d)\n\
-       %s%s\n\
-       (check-sat)\n\
-       (get-info :reason-unknown)\n"
-      dt mq timeout rlimit_opt body
+    Printf.sprintf "%s%s%s%s%s\n(check-sat)\n(get-info :reason-unknown)\n" dt mq
+      timeout_opt rlimit_opt body
   in
   (* [dt_lazy_splits] only steers datatype case splits, so a body without a
      datatype would race a copy of [axiom]. *)
@@ -176,10 +169,11 @@ let check_sat ?(functional_bodies = fun _ -> []) loc prop =
 
 (* z3's [:reason-unknown] → which knob to raise to move the verdict. *)
 let coercion_hint = function
-  | Some r when String.starts_with ~prefix:"max. resource" r ->
+  | Some r
+    when r = "canceled" || r = "push canceled"
+         || String.starts_with ~prefix:"max. resource" r ->
       "raise rlimit first, then debug the query"
-  | Some ("timeout" | "canceled") ->
-      "raise the prover timeout first, then debug the query"
+  | Some "timeout" -> "raise the prover timeout first, then debug the query"
   | Some r -> Printf.sprintf "z3 reason-unknown: %s" r
   | None -> "z3 gave no reason-unknown"
 
