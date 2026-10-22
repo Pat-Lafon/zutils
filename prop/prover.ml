@@ -75,7 +75,7 @@ let dump_queries entries =
     entries
 
 (* The queries raced for one [check_sat] *)
-let portfolio_entries axiom_body : Portfolio.entry list =
+let portfolio_entries ~functional_bodies axiom_body : Portfolio.entry list =
   let timeout =
     match !_timeout with Some t -> t | None -> get_prover_timeout_bound ()
   in
@@ -119,6 +119,13 @@ let portfolio_entries axiom_body : Portfolio.entry list =
         query = wrap ~mbqi_only:true axiom_body;
       };
     ]
+  @ List.mapi
+      (fun i body ->
+        {
+          Portfolio.label = Printf.sprintf "functional_%i" i;
+          query = wrap body;
+        })
+      functional_bodies
 
 let select_axioms prop =
   let { ax_sys; _ } = get_prover () in
@@ -137,7 +144,7 @@ let report_unclosed loc query =
           fvs))
     (0 = List.length fvs)
 
-let check_sat loc prop =
+let check_sat ?(functional_bodies = fun _ -> []) loc prop =
   incr query_counter;
   let () = report_unclosed loc prop in
   let { ctx; ax_sys } = get_prover () in
@@ -151,7 +158,9 @@ let check_sat loc prop =
     Pp.printf "@{<bold>QUERY:@}\n%s\n" (Expr.to_string query)
   in
   let body = serialize ctx (z3_axioms @ [ query ]) in
-  let entries = portfolio_entries body in
+  let entries =
+    portfolio_entries ~functional_bodies:(functional_bodies prop) body
+  in
   dump_queries entries;
   let time_t, (res, winner) = Sugar.clock (fun () -> Portfolio.solve entries) in
   let () =
@@ -180,26 +189,64 @@ let record_nondecisive ~reason ~coerced_to =
     "[non-decisive Z3 verdict] q%i: timeout/unknown coerced to %s; %s.\n"
     !query_counter coerced_to (coercion_hint reason)
 
-let check_valid loc query =
-  match check_sat loc (smart_not query) with
+let check_valid ?functional_bodies loc query =
+  match check_sat ?functional_bodies loc (smart_not query) with
   | SmtUnsat -> SmtValid
   | SmtSat -> SmtInvalid
   | Unknown reason -> Unknown reason
 
-let check_sat_bool loc query ~coerce_to =
+let check_sat_bool ?functional_bodies loc query ~coerce_to =
   let coerce_desc = if coerce_to then "inhabited" else "uninhabited" in
-  match check_sat loc query with
+  match check_sat ?functional_bodies loc query with
   | SmtSat -> true
   | SmtUnsat -> false
   | Unknown reason ->
       record_nondecisive ~reason ~coerced_to:coerce_desc;
       coerce_to
 
-let check_valid_bool loc query ~coerce_to =
+let check_valid_bool ?functional_bodies loc query ~coerce_to =
   let coerce_desc = if coerce_to then "valid" else "invalid" in
-  match check_valid loc query with
+  match check_valid ?functional_bodies loc query with
   | SmtValid -> true
   | SmtInvalid -> false
   | Unknown reason ->
       record_nondecisive ~reason ~coerced_to:coerce_desc;
       coerce_to
+
+let%test "a functional body defining len decides a sat query over it" =
+  ZUtilsConfig.(set (Result.get_ok (of_yojson (`Assoc []))));
+  let ilist = Nt.Ty_constructor ("ilist", []) in
+  if not (Z3decls.is_registered "ilist") then
+    Z3decls.register_decl
+      {
+        dt_name = "ilist";
+        ctors =
+          [
+            { cname = "nil"; fields = [] };
+            {
+              cname = "cons";
+              fields =
+                [
+                  { fname = "head"; ftype = Nt.int_ty };
+                  { fname = "tail"; ftype = ilist };
+                ];
+            };
+          ];
+      };
+  let l = "l"#:ilist in
+  let len_l =
+    AAppOp ("len"#:(Nt.mk_arr ilist Nt.int_ty), [ (AVar l)#:ilist ])
+  in
+  let query =
+    Exists { qv = l; body = lit_to_prop (mk_int_l1_eq_l2 len_l (AC (I 2))) }
+  in
+  let functional_bodies p =
+    [
+      "(declare-datatypes ((ilist 0)) (((nil) (cons (head Int) (tail ilist)))))\n\
+       (define-fun-rec len ((l ilist)) Int\n\
+      \  (match l ((nil 0) ((cons h t) (+ 1 (len t))))))\n"
+      ^ spf "(assert %s)\n"
+          (Expr.to_string (Propencoding.to_z3 (get_prover ()).ctx p));
+    ]
+  in
+  check_sat ~functional_bodies [%here] query = SmtSat
